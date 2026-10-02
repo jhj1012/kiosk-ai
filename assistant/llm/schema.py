@@ -16,7 +16,8 @@ NOTE_MAX = 150  # "screen" and "todo": short reasoning written before deciding
 ASK_MAX = 6  # "need_to_ask": required choices on the screen the customer has not given
 MESSAGE_MAX = 400
 TEXT_MAX = 40
-MAX_ACTIONS = 12
+MAX_ACTIONS = 6  # real batches are ~4 (choices, quantity, add); long ones were garbage
+MAX_CHOICES = 10
 MAX_TIMES = 20
 MAX_WAIT_S = 5
 REPLY_KINDS = ("ask", "tell", "confirm")
@@ -36,7 +37,7 @@ def reply_schema(snapshot: Snapshot) -> dict[str, Any]:
         next={"const": "reply"},
         kind={"type": "string", "enum": list(REPLY_KINDS)},
         message=_string(MESSAGE_MAX),
-        choices=_target_list(_control_keys(snapshot), max_items=MAX_ACTIONS),
+        choices=_target_list(_control_keys(snapshot), max_items=MAX_CHOICES),
     )
 
 

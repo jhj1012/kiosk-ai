@@ -47,7 +47,7 @@ class Agent:
         self.output = output
         self.config = config
         self.screen_config = screen_config
-        self.conversation = Conversation(SYSTEM_PROMPT, config.history_messages)
+        self.conversation = Conversation(SYSTEM_PROMPT, config.history_turns)
         self.gate = ConfirmationGate(
             payment_pattern=config.payment_button_pattern,
             discard_pattern=config.discard_button_pattern,
@@ -75,6 +75,7 @@ class Agent:
             log.error("llm error: %s", e)
             reply = Reply("tell", LLM_ERROR_MESSAGE)
         self._deliver(reply, snapshot)
+        self.conversation.end_turn(reply.kind, reply.message)
         self.last_reply = reply
         self.output.set_state(AssistantState.IDLE)
         return reply

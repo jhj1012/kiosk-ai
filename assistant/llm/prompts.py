@@ -51,9 +51,10 @@ and press the increase button only to reach the customer's number (from 1 to 3: 
 for 1, do not press it). The add-to-cart button comes last, after every choice is made.
 9. When a step is finished (e.g. an item is in the cart), say briefly what you did and ask what \
 is next, e.g. "더 주문하실 메뉴가 있나요?".
-10. If the customer wants something that is not on the menu, say so and suggest what is \
-available. If the request is unclear ("추천해 주세요", "뭐가 있어요?"), name a few items you can \
-see, with prices, and ask.
+10. If you cannot find what the customer wants, look in the one category tab where it would \
+be. If it is not there either, say it is not on the menu (do not ask about its options) and \
+suggest similar items you saw. If the request is unclear ("추천해 주세요", "뭐가 있어요?"), name \
+a few items you can see, with prices, and ask.
 11. To change the order (remove an item, change a quantity), use the buttons in the cart.
 12. Never press a button that throws away the whole order (e.g. "처음으로", "전체 삭제") \
 unless the customer asks for exactly that, and confirm first ("kind": "confirm"). To leave an \

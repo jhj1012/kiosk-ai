@@ -132,15 +132,24 @@ def test_schema_variants_follow_the_screen() -> None:
     }
 
 
-def test_conversation_trims_whole_old_turns() -> None:
-    conversation = Conversation("system", max_messages=4)
+def test_conversation_condenses_finished_turns_and_drops_old_ones() -> None:
+    conversation = Conversation("system", max_turns=2)
     for turn in range(3):
         conversation.add_customer(f"turn {turn}")
-        conversation.add_model("{}")
+        conversation.add_model('{"next": "act"}')
         conversation.add_note("RESULT")
+        conversation.end_turn("ask", f"answer {turn}")
     conversation.add_customer("turn 3")
+    conversation.add_model('{"next": "act"}')
+    conversation.add_note("RESULT")
     contents = [m["content"] for m in conversation.messages]
-    assert contents == ['Customer: "turn 2"', "{}", "RESULT", 'Customer: "turn 3"']
+    assert contents == [
+        'Customer: "turn 2"',
+        '{"next": "reply", "kind": "ask", "message": "answer 2"}',  # steps of turn 2 are gone
+        'Customer: "turn 3"',
+        '{"next": "act"}',  # the current turn is complete
+        "RESULT",
+    ]
     built = conversation.build('[1] Button "A"')
     assert built[0] == {"role": "system", "content": "system"}
     assert built[-1]["content"].startswith("CURRENT SCREEN:")

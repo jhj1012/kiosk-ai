@@ -155,8 +155,7 @@ class Executor:
                 # A single-choice group keeps one choice on; selecting another one switches it.
                 # Not an error: the batch usually selects the other choice next.
                 return after_screen, (
-                    f"NOTE: {element.label} stays selected; in a single-choice group, select "
-                    "another choice instead of turning this one off"
+                    f"NOTE: {element.label} stays on until another choice is selected"
                 )
             return after_screen, f"{word} {element.label}"
         if not on:

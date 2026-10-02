@@ -52,7 +52,7 @@ def test_unselect_in_single_choice_group_is_a_note_and_the_batch_continues() -> 
     screen.toggle = lambda e: None if e.name == "HOT" else real_toggle(e)
     result = run(screen, ActionRequest("unselect", ref=1), ActionRequest("select", ref=2))
     assert not result.failed
-    assert result.lines[0].startswith('NOTE: CheckBox "HOT" stays selected')
+    assert result.lines[0] == 'NOTE: CheckBox "HOT" stays on until another choice is selected'
     assert result.lines[1] == 'selected CheckBox "ICE"'
 
 
