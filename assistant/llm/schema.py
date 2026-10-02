@@ -16,6 +16,7 @@ from typing import Any
 
 from assistant.screen.model import Snapshot
 
+SAID_MAX = 12  # "customer_said": what this customer has decided so far
 ASK_MAX = 6  # "need_to_ask": required choices on the screen the customer has not given
 MAX_ACTIONS = 6  # real batches are ~4 (choices, quantity, add); long ones were garbage
 MAX_CHOICES = 10
@@ -36,7 +37,7 @@ def decision_schema(snapshot: Snapshot) -> dict[str, Any]:
             "maxItems": MAX_ACTIONS,
         },
         **_reply_fields(snapshot, 'Only for "reply": '),
-        required=["screen", "todo", "need_to_ask", "next"],
+        required=["screen", "todo", "customer_said", "need_to_ask", "next"],
     )
 
 
@@ -53,6 +54,13 @@ def _notes() -> dict[str, Any]:
     return {
         "screen": _string("A few English words: what the CURRENT SCREEN is for."),
         "todo": _string("What the customer asked for that is not done yet, with quantities."),
+        "customer_said": {
+            "type": "array",
+            "description": "Everything this customer has decided so far, short (e.g. 포장, "
+            "아이스 아메리카노 1잔, 결제수단 카드). Keep earlier entries.",
+            "items": {"type": "string"},
+            "maxItems": SAID_MAX,
+        },
         "need_to_ask": {
             "type": "array",
             "description": "Required choices on this screen the customer has not said yet.",

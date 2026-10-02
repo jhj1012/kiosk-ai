@@ -247,3 +247,30 @@ def test_same_customer_may_order_again_after_saying_so() -> None:
     agent.handle("하나 더 주문할게요")
     agent.handle("아니요, 저 하나 더 살게요")
     assert ("invoke", "주문하기") in screen.calls
+
+
+def test_start_clears_a_leftover_order_and_learns_the_real_start_screen() -> None:
+    """Started while the kiosk was mid-order: the menu must not become the idle screen."""
+    start = window(text("어서 오세요"), button("주문하기"))
+    screen = FakeScreen(window(button("아메리카노"), button("처음으로"), text("장바구니 1개")))
+    screen.on_press["처음으로"] = lambda: setattr(screen, "page", start)
+    agent = Agent(screen, FakeLlm(), RecordingOutput(), agent_config(), FAST_SCREEN)
+    agent.start()
+    assert screen.calls == [("invoke", "처음으로")]
+    assert agent.customers.idle_controls == frozenset({"Button:주문하기"})
+
+
+def test_decisions_are_remembered_across_turns() -> None:
+    screen = FakeScreen(window(text("결제수단"), button("카드")))
+    said = {"customer_said": ["포장", "결제수단 카드"]}
+    llm = FakeLlm(
+        {**reply("카드로 결제할까요?"), **said},
+        reply("네, 결제할게요.", kind="tell"),
+    )
+    agent, _ = start_on(screen, llm)
+    agent.handle("포장이요")
+    agent.handle("네")
+    contents = [m["content"] for m in llm.requests[1][0]]
+    assert "THE CUSTOMER ALREADY DECIDED: 포장; 결제수단 카드" in contents
+    agent.reset()
+    assert agent.conversation.customer_said == ()

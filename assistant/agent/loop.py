@@ -94,8 +94,19 @@ class Agent:
         self._order_finished = False
 
     def start(self) -> None:
-        """Call once when the assistant starts: the kiosk's current screen is its idle screen."""
-        self.customers.learn_idle_screen(self._settle())
+        """Call once when the assistant starts, before anyone talks.
+
+        Nobody is being served yet, so a leftover order on the screen belongs to no one: it is
+        cleared with the order-discarding button (e.g. "처음으로"). The screen the kiosk then
+        shows is learned as its idle screen.
+        """
+        snapshot = self._settle()
+        home = self._discard_button(snapshot)
+        if home is not None:
+            log.info("start: clearing a leftover order with %s", home.label)
+            self.screen.invoke(home)
+            snapshot = self._settle()
+        self.customers.learn_idle_screen(snapshot)
 
     def reset(self) -> None:
         """Forget the conversation: the next message comes from a new customer."""
@@ -212,6 +223,8 @@ class Agent:
             self.conversation.add_note(f"ERROR: {e} Answer again.")
             return None, result.text
         log.info("thought: %s", decision.thought)
+        if decision.customer_said:
+            self.conversation.customer_said = decision.customer_said
         self.conversation.add_model(decision.to_json())
         return decision, result.text
 
@@ -240,28 +253,30 @@ class Agent:
 
     def _start_new_customer(self) -> None:
         """The speaker is a new customer: clear the kiosk's order and the conversation."""
-        snapshot = self._settle()
-        if not self.customers.is_idle(snapshot):
-            home = next(
-                (
-                    e
-                    for e in snapshot.elements
-                    if e.ref is not None and not e.is_region and self.gate.discards_order(e)
-                ),
-                None,
-            )
-            if home is not None:
-                # The customer confirmed, so the order-discarding button may be pressed here.
-                log.info("new customer: pressing %s", home.label)
-                self.output.show_elements([home])
-                self.screen.invoke(home)
+        home = self._discard_button(self._settle())
+        if home is not None:
+            # The customer confirmed, so the order-discarding button may be pressed here. It is
+            # pressed whenever it is shown: the kiosk's start screen does not have one.
+            log.info("new customer: pressing %s", home.label)
+            self.output.show_elements([home])
+            self.screen.invoke(home)
         log.info("new customer (confirmed by the speaker): starting a new conversation")
         self.reset()
 
+    def _discard_button(self, snapshot: Snapshot) -> Element | None:
+        """The enabled button that throws the whole order away (e.g. "처음으로"), if shown."""
+        return next(
+            (
+                e
+                for e in snapshot.elements
+                if e.ref is not None and not e.is_region and self.gate.discards_order(e)
+            ),
+            None,
+        )
+
     def _customer_wants_to_pay(self) -> bool:
         """Has the customer asked to pay, without changing the order since?"""
-        recent = self.conversation.customer_messages(PAYMENT_CONTEXT_MESSAGES)
-        lines = "\n".join(f"{i}. {m}" for i, m in enumerate(recent, start=1))
+        lines = "\n".join(self.conversation.dialogue(PAYMENT_CONTEXT_MESSAGES))
         return self._classify(PAYMENT_QUESTION.format(messages=lines), "payment request")
 
     def _classify(self, prompt: str, what: str) -> bool:

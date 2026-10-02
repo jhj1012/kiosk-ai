@@ -32,7 +32,10 @@ A menu item may be under another category tab: press the tab first, then the ite
 or answered (now or earlier) matches a control on the CURRENT SCREEN, act on it now. Kiosks \
 often ask the same thing twice (e.g. eat in or take out at the start and again before \
 payment): answer it yourself with what the customer already said. Never ask the same \
-question twice, and never ask the customer to confirm something they already asked for.
+question twice, and never ask the customer to confirm something they already asked for. \
+Keep every decision in "customer_said" (shown to you again as THE CUSTOMER ALREADY DECIDED). \
+A "네" to your own suggestion decides it too: after "카드로 결제할까요?" → "네", \
+결제수단 카드 is decided.
 3. Match the customer's Korean words to the control names on the screen: the control whose \
 name uses the same or similar Korean words is the one they mean. Do not decide through an \
 English translation.
@@ -88,6 +91,9 @@ request. Adding more items or changing the current order is NOT a new customer.
 out", "menu, coffee tab", "options for latte", "payment").
 "todo": what the customer asked for that is not done yet, always with the quantity, in the \
 customer's own Korean words (e.g. "아이스 라떼 2잔, 쿠키 1개: latte tab first").
+"customer_said": everything this customer has decided so far in this conversation, short, in \
+Korean (e.g. ["포장", "아이스 아메리카노 1잔", "결제수단 카드"]). Copy the earlier entries and add \
+new ones; never drop a decision unless the customer changed it.
 "need_to_ask": the REQUIRED choices shown on the CURRENT SCREEN that you must ask the customer \
 about, because the customer never said them (e.g. ["온도"], ["매장/포장"], ["결제수단"]). A \
 default checked on the screen does not count as the customer's answer. Leave out choices the \
@@ -120,8 +126,9 @@ CURRENT SCREEN:
 [3] Button "치즈버거 5000원"
 [4] Button "불고기버거 5500원"
 Your answer:
-{"screen": "menu, burger tab", "todo": "치즈버거 세트 1개", "need_to_ask": [], "next": "act", \
-"actions": [{"do": "click", "target": "치즈버거 5000원", "times": 1}]}
+{"screen": "menu, burger tab", "todo": "치즈버거 세트 1개", "customer_said": \
+["치즈버거 세트 1개"], "need_to_ask": [], "next": "act", "actions": \
+[{"do": "click", "target": "치즈버거 5000원", "times": 1}]}
 CURRENT SCREEN:
 Text "치즈버거"
 <옵션 목록>
@@ -140,20 +147,22 @@ Text "수량 1개"
 [8] Button "수량 증가"
 [9] Button "장바구니 담기"
 Your answer:
-{"screen": "options for cheeseburger", "todo": "세트 1개", "need_to_ask": ["음료"], "next": \
-"act", "actions": [{"do": "select", "target": "세트 +2000원"}]}
+{"screen": "options for cheeseburger", "todo": "세트 1개", "customer_said": \
+["치즈버거 세트 1개"], "need_to_ask": ["음료"], "next": "act", "actions": \
+[{"do": "select", "target": "세트 +2000원"}]}
 (new screen: the set is checked)
-{"screen": "options for cheeseburger", "todo": "세트 1개", "need_to_ask": ["음료"], "next": \
-"reply", "kind": "ask", "message": "세트로 골랐어요. 음료는 콜라와 사이다 중 어떤 걸로 \
-드릴까요?", "choices": ["콜라", "사이다"]}
+{"screen": "options for cheeseburger", "todo": "세트 1개", "customer_said": \
+["치즈버거 세트 1개"], "need_to_ask": ["음료"], "next": "reply", "kind": "ask", "message": \
+"세트로 골랐어요. 음료는 콜라와 사이다 중 어떤 걸로 드릴까요?", "choices": ["콜라", "사이다"]}
 Customer: "사이다로 두 개요"
 {"screen": "options for cheeseburger", "todo": "사이다, 두 개 (shown 1: one press), add", \
-"need_to_ask": [], "next": "act", "actions": [{"do": "select", "target": "사이다"}, \
+"customer_said": ["치즈버거 세트 2개", "음료 사이다"], "need_to_ask": [], "next": "act", \
+"actions": [{"do": "select", "target": "사이다"}, \
 {"do": "click", "target": "수량 증가", "times": 1}, \
 {"do": "click", "target": "장바구니 담기", "times": 1}]}
 (new screen: the menu; the cart shows the set)
-{"screen": "menu with cart", "todo": "nothing; ask what is next", "need_to_ask": [], \
-"next": "reply", "kind": \
+{"screen": "menu with cart", "todo": "nothing; ask what is next", "customer_said": \
+["치즈버거 세트 2개", "음료 사이다"], "need_to_ask": [], "next": "reply", "kind": \
 "ask", "message": "치즈버거 세트(사이다) 2개를 담았어요. 더 주문하실 메뉴가 있나요?", \
 "choices": []}
 """
@@ -172,11 +181,12 @@ Did the customer clearly agree, without asking for any change? Answer "yes", "no
 "unclear"."""
 
 PAYMENT_QUESTION = """\
-A customer is ordering at a self-service kiosk with the help of an assistant. These are the \
-customer's latest messages, oldest first:
+A customer is ordering at a self-service kiosk with the help of an assistant. This is their \
+latest conversation, oldest first:
 {messages}
-Has the customer asked to pay for their order (or agreed to pay), without changing the order \
-or taking it back in a later message? Answer "yes", "no", or "unclear"."""
+Has the customer asked to pay for their order, or agreed when the assistant offered to pay \
+(e.g. "네" to "결제할까요?"), without changing the order or taking it back later? Answer "yes", \
+"no", or "unclear"."""
 
 CONFIRM_SCHEMA = {
     "type": "object",

@@ -29,10 +29,14 @@ class Conversation:
         self.max_turns = max_turns
         self._turns: list[_Turn] = []
         self._paid_in: _Turn | None = None  # the turn in which the last payment was made
+        # What this customer has decided so far, as the model last listed it. Shown with every
+        # request, because finished turns are condensed and their notes are not sent again.
+        self.customer_said: tuple[str, ...] = ()
 
     def clear(self) -> None:
         self._turns.clear()
         self._paid_in = None
+        self.customer_said = ()
 
     @property
     def is_empty(self) -> bool:
@@ -65,6 +69,9 @@ class Conversation:
         """Messages for one request: system prompt, history, then the current screen."""
         messages: list[Message] = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.messages)
+        if self.customer_said:
+            known = "; ".join(self.customer_said)
+            messages.append({"role": "user", "content": f"THE CUSTOMER ALREADY DECIDED: {known}"})
         if extra_note:
             messages.append({"role": "user", "content": extra_note})
         messages.append({"role": "user", "content": screen_message(screen_text)})
@@ -82,14 +89,21 @@ class Conversation:
                 messages.extend(turn.steps)
         return messages
 
-    def customer_messages(self, last: int) -> list[str]:
-        """The customer's latest messages since the last payment, oldest first."""
+    def dialogue(self, last: int) -> list[str]:
+        """The latest exchanges since the last payment, oldest first: "Customer: ..." and
+        "Assistant: ..." lines. A bare "네" only means something next to the question it answers.
+        """
         turns = self._turns
         for i, turn in enumerate(turns):
             if turn is self._paid_in:  # identity: equal-looking turns are different turns
                 turns = turns[i + 1 :]
                 break
-        return [t.customer for t in turns[-last:]]
+        lines = []
+        for turn in turns[-last:]:
+            lines.append(f"Customer: {turn.customer}")
+            if turn.reply is not None:
+                lines.append(f"Assistant: {json.loads(turn.reply).get('message', '')}")
+        return lines
 
     def _current(self) -> _Turn:
         if not self._turns:

@@ -126,8 +126,14 @@ def test_decision_schema_limits_targets_to_the_screen() -> None:
     assert item["required"] == ["do"]
     assert schema["properties"]["choices"]["items"]["enum"] == controls
     assert schema["properties"]["next"]["enum"] == ["act", "reply"]
-    assert schema["required"] == ["screen", "todo", "need_to_ask", "next"]
-    assert list(schema["properties"])[:4] == ["screen", "todo", "need_to_ask", "next"]
+    assert schema["required"] == ["screen", "todo", "customer_said", "need_to_ask", "next"]
+    assert list(schema["properties"])[:5] == [
+        "screen",
+        "todo",
+        "customer_said",
+        "need_to_ask",
+        "next",
+    ]
 
 
 def test_schemas_use_only_keywords_gemini_supports() -> None:
@@ -155,7 +161,7 @@ def test_schema_follows_the_screen() -> None:
     final = reply_schema(SCREEN)
     assert final["properties"]["next"]["enum"] == ["reply"]
     assert set(final["required"]) == {
-        "screen", "todo", "need_to_ask", "next", "kind", "message", "choices",
+        "screen", "todo", "customer_said", "need_to_ask", "next", "kind", "message", "choices",
     }  # fmt: skip
 
 

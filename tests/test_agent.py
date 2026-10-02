@@ -196,7 +196,7 @@ def test_payment_needs_a_read_back_but_no_question() -> None:
     agent.handle("카드로 결제해 주세요")
     assert screen.calls == [("toggle", "카드"), ("invoke", "결제")]
     assert llm.requests[1][1] == CONFIRM_SCHEMA
-    assert "1. 카드로 결제해 주세요" in llm.requests[1][0][0]["content"]
+    assert "Customer: 카드로 결제해 주세요" in llm.requests[1][0][0]["content"]
     # One message: the read-back first, then the reply. No "결제하시겠어요?" turn.
     assert output.messages == [("say", f"{READ_BACK} 결제가 완료되었어요.")]
 
@@ -213,7 +213,11 @@ def test_an_earlier_request_to_pay_counts() -> None:
     agent.handle("이제 결제할게요")
     agent.handle("카드요")
     assert ("invoke", "결제") in screen.calls
-    assert "1. 이제 결제할게요\n2. 카드요" in llm.requests[2][0][0]["content"]
+    # The check sees the assistant's question too, so a short answer has its meaning.
+    assert (
+        "Customer: 이제 결제할게요\nAssistant: 결제수단은 어떤 걸로 하시겠어요?\nCustomer: 카드요"
+        in llm.requests[2][0][0]["content"]
+    )
 
 
 def test_payment_gate_can_be_disabled() -> None:
