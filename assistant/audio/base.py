@@ -10,6 +10,8 @@ class MicError(Exception):
 
 
 class FrameSource(Protocol):
+    sample_rate: int  # valid after open(); frames are `frame_ms` long at this rate
+
     def open(self) -> None:
         """Start capturing. Raises MicError if the device cannot be opened."""
         ...

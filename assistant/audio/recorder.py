@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import replace
 
 from assistant.audio.base import FrameSource, MicError
 from assistant.audio.vad import Dropped, Segmenter, Utterance, calibrate
@@ -40,7 +41,8 @@ class UtteranceRecorder:
         except Exception:
             self.source.close()
             raise
-        self._segmenter = Segmenter(self.config, noise)
+        config = replace(self.config, sample_rate=self.source.sample_rate)
+        self._segmenter = Segmenter(config, noise)
         log.info("microphone ready: noise level %.0f, threshold %.0f", noise, self.threshold)
         return noise
 

@@ -19,10 +19,10 @@ CONFIG = AudioConfig(
     calibration_s=0.3,
     threshold_factor=3.0,
     min_threshold=300,
-    start_ms=150,
+    start_ms=90,
     pre_roll_ms=300,
     silence_end_ms=800,
-    min_utterance_ms=300,
+    min_utterance_ms=120,
     max_utterance_s=15,
 )
 
@@ -68,6 +68,7 @@ class FakeSource:
     """Plays a list of frames; then None (no audio), or raises `error` when it is set."""
 
     def __init__(self, frames: list[bytes] | None = None) -> None:
+        self.sample_rate = RATE
         self.frames = list(frames or [])
         self.opened = 0
         self.closed = 0

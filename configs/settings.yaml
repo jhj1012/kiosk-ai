@@ -18,10 +18,10 @@ audio:
   calibration_s: 1.0        # background noise is measured at start-up (stay quiet)
   threshold_factor: 3.0     # speech = this many times louder than the background noise
   min_threshold: 300        # ...and at least this loud
-  start_ms: 150             # loud audio this long in a row starts an utterance
+  start_ms: 90              # this much loud audio within 300 ms starts an utterance
   pre_roll_ms: 300          # audio kept from before the start, so the first syllable is not cut
   silence_end_ms: 800       # quiet this long ends the utterance
-  min_utterance_ms: 300     # shorter sounds (coughs, clicks) are dropped
+  min_utterance_ms: 120     # shorter sounds (clicks) are dropped; a short "네" is ~150 ms
   max_utterance_s: 15       # longer utterances are cut off here
   echo_tail_ms: 300         # keep ignoring the mic this long after the assistant stops speaking
 

@@ -68,10 +68,10 @@ class AudioConfig:
     calibration_s: float = 1.0  # background noise is measured this long at start-up
     threshold_factor: float = 3.0  # speech is this many times louder than the noise
     min_threshold: float = 300.0  # ...and never quieter than this
-    start_ms: int = 150  # this much loud audio in a row starts an utterance
+    start_ms: int = 90  # this much loud audio within 300 ms starts an utterance
     pre_roll_ms: int = 300  # audio kept from before the start, so no syllable is cut
     silence_end_ms: int = 800  # this much quiet ends the utterance
-    min_utterance_ms: int = 300  # less loud audio than this is a cough or a click: dropped
+    min_utterance_ms: int = 120  # less loud audio than this is a click: dropped ("네" ~150)
     max_utterance_s: float = 15.0  # longer utterances are cut here
     echo_tail_ms: int = 300  # after the assistant stops speaking, keep ignoring the mic
 

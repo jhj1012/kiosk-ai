@@ -50,7 +50,7 @@ class Microphone:
     def __init__(self, config: AudioConfig, gate: SpeakingGate | None = None) -> None:
         self.config = config
         self.gate = gate
-        self.frame_samples = config.sample_rate * config.frame_ms // 1000
+        self.sample_rate = config.sample_rate  # the device's rate if it refuses this one
         max_frames = int(MAX_QUEUED_S * 1000 / config.frame_ms)
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=max_frames)
         self._stream: Any = None
@@ -70,21 +70,35 @@ class Microphone:
             if index is None or index < 0:
                 raise MicError("no microphone found (Windows has no default input device)")
             self.device_name = str(devices[index]["name"])
-            stream = sd.RawInputStream(
-                samplerate=self.config.sample_rate,
-                blocksize=self.frame_samples,
-                channels=1,
-                dtype="int16",
-                device=device,
-                callback=self._on_audio,
-            )
-            stream.start()
+            native = int(devices[index].get("default_samplerate") or 0)
+            try:
+                stream = self._start(sd, device, self.config.sample_rate)
+            except Exception as e:
+                # Some drivers (WDM-KS) do not resample: use the device's own rate. The voice
+                # detection and Gemini work with any rate.
+                if not native or native == self.config.sample_rate:
+                    raise
+                log.info("%d Hz refused (%s); using %d Hz", self.config.sample_rate, e, native)
+                stream = self._start(sd, device, native)
         except MicError:
             raise
         except Exception as e:  # sounddevice.PortAudioError, invalid device or sample rate
             raise MicError(f"could not open the microphone: {e}") from e
         self._stream = stream
-        log.info("microphone opened: %s, %d Hz", self.device_name, self.config.sample_rate)
+        log.info("microphone opened: %s, %d Hz", self.device_name, self.sample_rate)
+
+    def _start(self, sd: Any, device: int | None, sample_rate: int) -> Any:
+        stream = sd.RawInputStream(
+            samplerate=sample_rate,
+            blocksize=sample_rate * self.config.frame_ms // 1000,
+            channels=1,
+            dtype="int16",
+            device=device,
+            callback=self._on_audio,
+        )
+        stream.start()
+        self.sample_rate = sample_rate
+        return stream
 
     def close(self) -> None:
         stream, self._stream = self._stream, None

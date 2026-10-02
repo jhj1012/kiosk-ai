@@ -4,8 +4,9 @@ Pure Python (no numpy), so it runs in CI. A frame counts as loud when its RMS le
 max(noise level x `threshold_factor`, `min_threshold`). The noise level is measured at start-up
 (`calibrate`) and keeps adapting while nobody speaks.
 
-`Segmenter` turns a stream of frames into utterances: it starts after `start_ms` of loud audio
-(keeping `pre_roll_ms` from before, so the first syllable is not cut), ends after
+`Segmenter` turns a stream of frames into utterances: it starts when the last 300 ms contain
+`start_ms` of loud audio (not necessarily in a row: syllables have short dips between them),
+keeping `pre_roll_ms` from before so the first syllable is not cut. It ends after
 `silence_end_ms` of quiet, drops utterances with less than `min_utterance_ms` of loud audio
 (coughs, clicks) and cuts them at `max_utterance_s`.
 """
@@ -28,6 +29,7 @@ SAMPLE_BYTES = 2  # 16-bit samples
 CONTINUE_RATIO = 0.6  # once speaking, quieter sounds (soft word endings) still count as speech
 NOISE_ADAPT = 0.05  # how fast the noise level follows the background while nobody speaks
 TAIL_MS = 300  # quiet audio kept after the last loud frame
+START_WINDOW_MS = 300  # start_ms of loud audio within this window starts an utterance
 
 
 class SilentMicError(MicError):
@@ -89,10 +91,11 @@ class Segmenter:
         self._end_frames = max(1, math.ceil(config.silence_end_ms / frame_ms))
         self._tail_frames = min(self._end_frames, math.ceil(TAIL_MS / frame_ms))
         self._max_frames = max(1, int(config.max_utterance_s * 1000 / frame_ms))
-        pre_roll = math.ceil(config.pre_roll_ms / frame_ms) + self._start_frames
-        self._before: deque[bytes] = deque(maxlen=pre_roll)
+        self._pre_roll_frames = math.ceil(config.pre_roll_ms / frame_ms)
+        window = max(self._start_frames, math.ceil(START_WINDOW_MS / frame_ms))
+        self._before: deque[bytes] = deque(maxlen=self._pre_roll_frames + window)
+        self._recent: deque[bool] = deque(maxlen=window)  # loud or not, while waiting
         self._frames: list[bytes] = []
-        self._run = 0  # loud frames in a row while waiting
         self._quiet = 0  # quiet frames in a row while speaking
         self._loud = 0  # loud frames in the current utterance
         self.speaking = False
@@ -104,8 +107,9 @@ class Segmenter:
     def reset(self) -> None:
         """Forget any audio heard so far (e.g. after the microphone buffer was flushed)."""
         self._before.clear()
+        self._recent.clear()
         self._frames = []
-        self._run = self._quiet = self._loud = 0
+        self._quiet = self._loud = 0
         self.speaking = False
 
     def feed(self, frame: bytes) -> Utterance | Dropped | None:
@@ -126,17 +130,20 @@ class Segmenter:
 
     def _wait(self, frame: bytes, level: float) -> None:
         self._before.append(frame)
-        if level >= self.threshold:
-            self._run += 1
-        else:
-            self._run = 0
+        loud = level >= self.threshold
+        self._recent.append(loud)
+        if not loud:
             self.noise_level += (level - self.noise_level) * NOISE_ADAPT
-        if self._run >= self._start_frames:
+        if sum(self._recent) >= self._start_frames:
+            # Keep pre_roll_ms before the first loud frame of the window.
+            first_loud = len(self._before) - len(self._recent) + self._recent.index(True)
+            keep_from = max(0, first_loud - self._pre_roll_frames)
             self.speaking = True
-            self._frames = list(self._before)
-            self._loud = self._run
+            self._frames = list(self._before)[keep_from:]
+            self._loud = sum(self._recent)
             self._quiet = 0
             self._before.clear()
+            self._recent.clear()
         return None
 
     def _finish(self, ended_by: Literal["silence", "max_length"]) -> Utterance | Dropped:

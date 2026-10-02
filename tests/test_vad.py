@@ -83,13 +83,30 @@ def test_long_pause_splits_into_two_utterances() -> None:
 
 
 def test_too_short_sounds_are_dropped() -> None:
-    recorder, _ = started(quiet(300), speech(180), quiet(1500))
+    recorder, _ = started(quiet(300), speech(90), quiet(1500))  # starts, but too short
     assert recorder.record(max_wait_s=1.5) is None
 
 
 def test_click_shorter_than_start_does_not_start() -> None:
-    recorder, _ = started(quiet(300), speech(90), quiet(1000))
+    recorder, _ = started(quiet(300), speech(60), quiet(1000))
     assert recorder.record(max_wait_s=1.0) is None
+
+
+def test_short_yes_is_kept() -> None:
+    """A quick "네" has only ~150 ms of loud audio."""
+    recorder, _ = started(quiet(300), speech(150), quiet(1500))
+    utterance = recorder.record(max_wait_s=2.0)
+    assert utterance is not None
+    assert utterance.speech_ms == 150
+
+
+def test_syllables_with_short_dips_start_an_utterance() -> None:
+    """Loud audio does not have to be in a row: "라지 사이즈로" has dips between syllables."""
+    syllables = speech(60) + quiet(60) + speech(60) + quiet(30) + speech(60) + quiet(60)
+    recorder, _ = started(quiet(300), syllables, quiet(1500))
+    utterance = recorder.record(max_wait_s=2.0)
+    assert utterance is not None
+    assert utterance.speech_ms >= 150
 
 
 def test_long_speech_is_cut_at_the_maximum() -> None:
