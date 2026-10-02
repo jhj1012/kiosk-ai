@@ -69,10 +69,15 @@ In our tests a step normally took 1–6 s, but some took ~50 s during busy perio
 
 ## Running all day
 
-Like a real kiosk, the assistant keeps running between customers. When the kiosk is back on
-its start screen and nobody has talked for 30 seconds (or nobody for 3 minutes, whatever the
-screen shows), the next message starts a fresh conversation: nothing from the previous
-customer is remembered or sent to Gemini. Start the assistant while the kiosk shows its start
+Like a real kiosk, the assistant keeps running between customers, and each customer gets a
+fresh conversation: nothing from the previous customer is remembered or sent to Gemini.
+
+- If someone sounds like a new customer (e.g. "안녕하세요, 아이스티 하나 주세요" right after the
+  last order was paid), the assistant asks "새로 주문하시는 손님이신가요?". On yes it presses
+  "처음으로" and starts over with their request.
+- As a fallback for quiet times: when the kiosk is back on its start screen and nobody has
+  talked for 30 seconds (or nobody for 3 minutes, whatever the screen shows), the next message
+  starts a new conversation. Start the assistant while the kiosk shows its start
 screen; the times are `new_customer_after_s` / `abandoned_after_s` in `configs/settings.yaml`.
 
 ## Docs

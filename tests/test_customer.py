@@ -136,3 +136,74 @@ def test_a_payment_request_is_used_up_by_the_payment() -> None:
     check_prompt = llm.requests[4][0][0]["content"]
     assert "고마워요" in check_prompt and "결제해 주세요" not in check_prompt
     assert screen.calls.count(("invoke", "결제")) == 1
+
+
+def done_screen() -> FakeScreen:
+    """A finished order still on screen; "처음으로" goes back to the idle screen."""
+    screen = FakeScreen(window(text("어서 오세요"), button("주문하기")))
+    screen.page = window(text("주문번호 1번"), button("처음으로"))
+    screen.on_press["처음으로"] = lambda: setattr(
+        screen, "page", window(text("어서 오세요"), button("주문하기"))
+    )
+    return screen
+
+
+def start_on(screen: FakeScreen, llm: FakeLlm) -> tuple[Agent, RecordingOutput]:
+    """Learn the idle screen first, then show `screen.page` (a later state)."""
+    later = screen.page
+    screen.page = window(text("어서 오세요"), button("주문하기"))
+    agent, output = make_agent(screen, llm, Clock())
+    screen.page = later
+    return agent, output
+
+
+def test_speaker_confirms_being_a_new_customer() -> None:
+    screen = done_screen()
+    llm = FakeLlm(
+        reply("결제가 완료되었어요. 주문번호는 1번이에요.", kind="tell"),
+        reply("새로 주문하시는 손님이신가요?", kind="new_customer"),
+        {"answer": "yes"},  # "네" to the new-customer question
+        reply("매장에서 드시나요, 포장하시나요?"),
+    )
+    agent, output = start_on(screen, llm)
+    agent.handle("결제해 주세요")
+    agent.handle("안녕하세요, 아이스티 하나 주세요")  # a different person, seconds later
+    agent.handle("네")
+    assert ("invoke", "처음으로") in screen.calls
+    contents = [m["content"] for m in llm.requests[3][0]]
+    customers = [c for c in contents if c.startswith("Customer:")]
+    # The new conversation starts with the new customer's request, not "네" or the old order.
+    assert customers == ['Customer: "안녕하세요, 아이스티 하나 주세요"']
+    assert any(
+        c.startswith("NOTE: The customer confirmed they are a new customer") for c in contents
+    )
+    assert output.messages[-1] == ("ask", ("매장에서 드시나요, 포장하시나요?", []))
+
+
+def test_speaker_says_they_are_the_same_customer() -> None:
+    screen = done_screen()
+    llm = FakeLlm(
+        reply("새로 주문하시는 손님이신가요?", kind="new_customer"),
+        {"answer": "no"},
+        reply("네, 주문번호 1번은 카운터에서 받으시면 돼요.", kind="tell"),
+    )
+    agent, _ = start_on(screen, llm)
+    agent.handle("하나 더 물어볼게요")
+    agent.handle("아니요, 아까 주문한 사람이에요")
+    assert ("invoke", "처음으로") not in screen.calls
+    customers = [m["content"] for m in llm.requests[2][0] if m["content"].startswith("Customer:")]
+    assert len(customers) == 2  # the conversation continues
+
+
+def test_new_customer_on_the_idle_screen_needs_no_button() -> None:
+    screen = done_screen()
+    screen.page = window(text("어서 오세요"), button("주문하기"))  # already back at the start
+    llm = FakeLlm(
+        reply("새로 주문하시는 손님이신가요?", kind="new_customer"),
+        {"answer": "yes"},
+        reply("무엇을 드릴까요?"),
+    )
+    agent, _ = start_on(screen, llm)
+    agent.handle("주문할게요")
+    agent.handle("네")
+    assert screen.calls == []

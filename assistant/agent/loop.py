@@ -44,6 +44,10 @@ NEW_CUSTOMER_NOTE = (
     "NOTE: A new customer is talking now. The screen still shows an unfinished order from "
     "someone else. Before using it, ask whether to continue that order or start over."
 )
+NEW_CONVERSATION_NOTE = (
+    "NOTE: The customer confirmed they are a new customer. The previous customer's order was "
+    "cleared and this is a new conversation. Continue with their request."
+)
 FALLBACK_MESSAGE = "죄송해요, 요청을 끝까지 처리하지 못했어요. 다시 한 번 말씀해 주시겠어요?"
 
 
@@ -75,6 +79,7 @@ class Agent:
             clock=clock,
         )
         self.last_reply: Reply | None = None
+        self._new_customer_request = ""  # message that made us ask "새로 오신 손님이신가요?"
 
     def start(self) -> None:
         """Call once when the assistant starts: the kiosk's current screen is its idle screen."""
@@ -92,7 +97,12 @@ class Agent:
         self.output.set_state(AssistantState.THINKING)
         snapshot: Snapshot | None = None
         try:
-            reply, snapshot = self._run_turn(text)
+            note = None
+            asked = self.last_reply is not None and self.last_reply.kind == "new_customer"
+            if asked and self._is_new_customer(text):
+                self._start_new_customer()
+                text, note = self._new_customer_request or text, NEW_CONVERSATION_NOTE
+            reply, snapshot = self._run_turn(text, note)
         except ScreenError as e:
             log.error("screen error: %s", e)
             reply = Reply("tell", SCREEN_ERROR_MESSAGE)
@@ -103,6 +113,8 @@ class Agent:
             # The order read-back given with the pay button comes first, in the same message.
             message = f"{self.gate.paid_with_read_back} {reply.message}".strip()
             reply = Reply(reply.kind, message, reply.choices)
+        if reply.kind == "new_customer":
+            self._new_customer_request = text
         self._deliver(reply, snapshot)
         self.conversation.end_turn(reply.kind, reply.message)
         self.last_reply = reply
@@ -112,7 +124,7 @@ class Agent:
 
     # ----- one turn -----
 
-    def _run_turn(self, text: str) -> tuple[Reply, Snapshot]:
+    def _run_turn(self, text: str, note: str | None = None) -> tuple[Reply, Snapshot]:
         snapshot = self._settle()
         switch = self.customers.check(snapshot)
         if switch is not Switch.SAME:
@@ -121,6 +133,8 @@ class Agent:
         self.conversation.add_customer(text)
         if switch is Switch.ABANDONED:
             self.conversation.add_note(NEW_CUSTOMER_NOTE)
+        if note:
+            self.conversation.add_note(note)
         confirm_check = None
         if self.last_reply is not None and self.last_reply.kind == "confirm":
             confirm_check = functools.partial(self._customer_agreed, self.last_reply.message, text)
@@ -191,6 +205,31 @@ class Agent:
         """Did the customer say yes to the assistant's confirm question?"""
         prompt = CONFIRM_QUESTION.format(question=question, answer=answer)
         return self._classify(prompt, f"confirmation {answer!r}")
+
+    def _is_new_customer(self, answer: str) -> bool:
+        """Did the speaker say yes to the question whether they are a new customer?"""
+        assert self.last_reply is not None
+        return self._customer_agreed(self.last_reply.message, answer)
+
+    def _start_new_customer(self) -> None:
+        """The speaker is a new customer: clear the kiosk's order and the conversation."""
+        snapshot = self._settle()
+        if not self.customers.is_idle(snapshot):
+            home = next(
+                (
+                    e
+                    for e in snapshot.elements
+                    if e.ref is not None and not e.is_region and self.gate.discards_order(e)
+                ),
+                None,
+            )
+            if home is not None:
+                # The customer confirmed, so the order-discarding button may be pressed here.
+                log.info("new customer: pressing %s", home.label)
+                self.output.show_elements([home])
+                self.screen.invoke(home)
+        log.info("new customer (confirmed by the speaker): starting a new conversation")
+        self.reset()
 
     def _customer_wants_to_pay(self) -> bool:
         """Has the customer asked to pay, without changing the order since?"""

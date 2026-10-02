@@ -21,7 +21,7 @@ MAX_ACTIONS = 6  # real batches are ~4 (choices, quantity, add); long ones were 
 MAX_CHOICES = 10
 MAX_TIMES = 20
 MAX_WAIT_S = 5
-REPLY_KINDS = ("ask", "tell", "confirm")
+REPLY_KINDS = ("ask", "tell", "confirm", "new_customer")
 
 
 def decision_schema(snapshot: Snapshot) -> dict[str, Any]:
@@ -68,7 +68,9 @@ def _reply_fields(snapshot: Snapshot, prefix: str) -> dict[str, Any]:
         message += ' With "act": empty, or the order read-back when pressing the final pay button.'
     return {
         "kind": _enum(
-            list(REPLY_KINDS), f"{prefix}ask, tell, or confirm (only before cancelling the order)."
+            list(REPLY_KINDS),
+            f"{prefix}ask, tell, confirm (only before cancelling the order), or new_customer "
+            "(ask whether the speaker is a new customer).",
         ),
         "message": _string(message),
         "choices": _target_list(_control_keys(snapshot)),
