@@ -45,6 +45,10 @@ class Rect:
         return None if rect.is_empty else rect
 
 
+# Rows of data lists: selectable in UIA, but not controls that do something.
+DATA_KINDS = frozenset({"ListItem", "TreeItem", "DataItem"})
+
+
 class Pattern(StrEnum):
     """UI Automation control patterns the assistant can use to act without the mouse."""
 
@@ -143,8 +147,15 @@ class Snapshot:
 
     @property
     def busy(self) -> bool:
-        """True if no control can be used, e.g. while the kiosk processes a payment."""
-        return not any(e.ref is not None and not e.is_region for e in self.elements)
+        """True if no control can be used, e.g. while the kiosk processes a payment.
+
+        Data rows (list items) do not count: an order list stays enabled while every button
+        is disabled during payment.
+        """
+        return not any(
+            e.ref is not None and not e.is_region and e.kind not in DATA_KINDS
+            for e in self.elements
+        )
 
     def controls(self) -> frozenset[tuple[int, ...] | tuple[str, str]]:
         """Identity of every control, enabled or not, ignoring state: changes only when

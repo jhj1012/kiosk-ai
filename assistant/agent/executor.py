@@ -116,9 +116,13 @@ class Executor:
             if current is not None:
                 again = current.find(element.runtime_id)
                 if again is None or not again.enabled:
-                    raise _Stop(
-                        f"ERROR: {element.label} was pressed {count} of {times} times; "
-                        "then it was gone or disabled."
+                    # Not an error: the presses did their job (a delete button removed its
+                    # row, a quantity reached its limit). Calling it a failure made the model
+                    # "fix" a correct result in E2E.
+                    state = "gone" if again is None else "disabled"
+                    return current, (
+                        f"pressed {element.label} {count} time(s); after that it was {state}, "
+                        "so it was not pressed again"
                     )
                 element = again
             self._press(element)

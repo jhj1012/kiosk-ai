@@ -152,3 +152,16 @@ def test_wait_and_scroll() -> None:
     result = run(screen, ActionRequest("wait", seconds=2), ActionRequest("scroll", ref=1))
     assert screen.calls == [("scroll", "down")]
     assert result.lines == ["waited 2 s", "scrolled <목록> down"]
+
+
+def test_repeated_press_stops_quietly_when_the_target_disappears() -> None:
+    # "삭제" removes its cart row: a second press finds nothing. That is success, not an error.
+    row = button("라떼 삭제")
+    screen = FakeScreen(window(row, button("결제하기")))
+    screen.on_press["라떼 삭제"] = lambda: setattr(screen, "page", window(button("결제하기")))
+    result = run(screen, ActionRequest("click", ref=1, times=2))
+    assert screen.calls == [("invoke", "라떼 삭제")]
+    assert not result.failed
+    assert result.lines == [
+        'pressed Button "라떼 삭제" 1 time(s); after that it was gone, so it was not pressed again'
+    ]

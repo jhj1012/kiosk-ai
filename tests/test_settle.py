@@ -1,8 +1,9 @@
 """Tests for waiting until the screen settles after an action."""
 
 from assistant.screen.model import Snapshot
+from assistant.screen.reader import RawNode
 from assistant.screen.settle import wait_until_settled
-from tests.screen_fakes import button, snapshot, text
+from tests.screen_fakes import button, group, snapshot, text
 
 
 class FakeClock:
@@ -54,3 +55,9 @@ def test_gives_up_after_timeout() -> None:
     busy = snapshot(text("잠시만 기다려 주세요"))
     result, calls = run([busy], timeout_s=0.5)
     assert result is busy and 5 <= calls <= 7
+
+
+def test_list_rows_do_not_make_a_busy_screen_usable() -> None:
+    row = RawNode("ListItem", "1번 쿠키 1개", rect=button("x").rect, runtime_id=(5, 5))
+    paying = snapshot(group("주문 내역", row), button("결제", enabled=False), text("결제 중"))
+    assert paying.busy
