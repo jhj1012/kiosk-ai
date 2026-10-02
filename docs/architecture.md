@@ -116,9 +116,19 @@ the planned overlay.
 ### Safety gates (code, not prompt)
 
 `agent.payment_button_pattern` and `agent.discard_button_pattern` (regexes in
-`configs/settings.yaml`, per kiosk) mark buttons that pay or throw the order away. Pressing
-one is blocked unless the previous reply was a `confirm` (for payment: order and total read
-back) and a small yes/no classification of the user's answer says yes.
+`configs/settings.yaml`, per kiosk) mark buttons that pay or throw the order away.
+
+- **Pay** is allowed when the user has asked to pay ("결제할게요", even a few turns earlier)
+  and has not changed the order since, judged by a small yes/no classification of their last
+  messages, and when the same answer carries a short read-back of the order and total. The
+  read-back is a statement, not a question, shown at the start of the turn's reply
+  ("아이스 아메리카노 1잔, 초코 쿠키 1개, 총 6,500원입니다. 결제가 완료되었어요…"). The user is
+  never asked "결제하시겠어요?": asking to pay is the approval.
+- **Discard** is allowed only right after the user said yes to a `confirm` question.
+
+The prompt also tells the model to remember earlier answers: kiosks ask some things twice
+(eat in or take out at the start and again before payment), and the assistant answers the
+second one itself instead of asking again.
 
 ### History
 

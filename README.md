@@ -50,6 +50,23 @@ uv run python -m kiosk_app                      # run the test kiosk
 uv run python -m assistant                      # run the assistant (type Korean; --debug shows its steps)
 ```
 
+### When the Gemini model is busy
+
+Gemini models are shared, and at busy times Google answers slowly or refuses requests with
+errors like `503 UNAVAILABLE ("This model is currently experiencing high demand")`,
+`429 RESOURCE_EXHAUSTED` (your quota is used up) or `504 DEADLINE_EXCEEDED`. The free tier
+allows only about 15 requests per minute per model, and one assistant turn can use several,
+so talking quickly can hit it. The assistant retries automatically (for `429` it waits as long
+as Google asks, up to a minute); if it still fails, it says
+"죄송해요, 지금 잠시 문제가 생겼어요…" and you can simply say it again. If it keeps happening:
+
+- wait a few minutes (demand spikes are usually short), or
+- switch to another model in `configs/models.local.yaml`, e.g. `gemini-3.5-flash-lite` ↔
+  `gemini-3.8-flash` (see [docs/setup.md](docs/setup.md#choosing-another-model)), or
+- check your quota in [Google AI Studio](https://aistudio.google.com/) for `429` errors.
+
+In our tests a step normally took 1–6 s, but some took ~50 s during busy periods.
+
 ## Docs
 
 - [docs/decisions.md](docs/decisions.md): what we chose and why

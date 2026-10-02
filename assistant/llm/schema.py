@@ -63,9 +63,14 @@ def _notes() -> dict[str, Any]:
 
 
 def _reply_fields(snapshot: Snapshot, prefix: str) -> dict[str, Any]:
+    message = "What you say to the customer, in short polite Korean."
+    if prefix:
+        message += ' With "act": empty, or the order read-back when pressing the final pay button.'
     return {
-        "kind": _enum(list(REPLY_KINDS), f"{prefix}ask, tell, or confirm (payment read-back)."),
-        "message": _string(f"{prefix}what you say to the customer, in short polite Korean."),
+        "kind": _enum(
+            list(REPLY_KINDS), f"{prefix}ask, tell, or confirm (only before cancelling the order)."
+        ),
+        "message": _string(message),
         "choices": _target_list(_control_keys(snapshot)),
     }
 

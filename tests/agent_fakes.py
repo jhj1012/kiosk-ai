@@ -117,8 +117,11 @@ class RecordingOutput:
         return [e for e in self.events if e[0] in ("say", "ask")]
 
 
-def act(*actions: dict[str, Any], thought: str = "t") -> dict[str, Any]:
-    return {"screen": "s", "todo": thought, "next": "act", "actions": list(actions)}
+def act(*actions: dict[str, Any], thought: str = "t", message: str = "") -> dict[str, Any]:
+    answer = {"screen": "s", "todo": thought, "next": "act", "actions": list(actions)}
+    if message:
+        answer["message"] = message
+    return answer
 
 
 def reply(message: str, kind: str = "ask", choices: list[str] | None = None) -> dict[str, Any]:

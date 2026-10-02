@@ -115,3 +115,19 @@ def test_missing_api_key_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(LlmError, match="GEMINI_API_KEY"):
         GeminiChatModel(CONFIG)
+
+
+def test_rate_limit_waits_as_long_as_google_asks(monkeypatch: pytest.MonkeyPatch) -> None:
+    waits: list[float] = []
+    monkeypatch.setattr(client_module.time, "sleep", waits.append)
+    limited = ApiError(429)
+    limited.args = ("429 RESOURCE_EXHAUSTED ... 'retryDelay': '31s'}]",)
+    llm, _ = model_with(limited, response("{}"))
+    llm.chat_json([{"role": "user", "content": "x"}], {})
+    assert waits == [32.0]
+
+    daily = ApiError(429)
+    daily.args = ("429 RESOURCE_EXHAUSTED ... 'retryDelay': '3600s'}]",)
+    llm, _ = model_with(daily)
+    with pytest.raises(LlmError):
+        llm.chat_json([{"role": "user", "content": "x"}], {})

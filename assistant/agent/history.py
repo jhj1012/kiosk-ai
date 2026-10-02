@@ -71,6 +71,10 @@ class Conversation:
                 messages.extend(turn.steps)
         return messages
 
+    def customer_messages(self, last: int) -> list[str]:
+        """The customer's latest messages, oldest first."""
+        return [t.customer for t in self._turns[-last:]]
+
     def _current(self) -> _Turn:
         if not self._turns:
             self._turns.append(_Turn(""))

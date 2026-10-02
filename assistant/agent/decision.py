@@ -40,6 +40,7 @@ class Decision:
     thought: str
     actions: tuple[ActionRequest, ...] = ()
     reply: Reply | None = None
+    read_back: str = ""  # with "act": order and total, shown when the pay button is pressed
     raw: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
@@ -84,7 +85,8 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
                 "press anything else: select only what the customer told you, then ask. If the "
                 'customer already told you, remove it from "need_to_ask".'
             )
-        return Decision(thought, actions=parsed, raw=data)
+        read_back = clean_message(str(data.get("message") or ""))
+        return Decision(thought, actions=parsed, read_back=read_back, raw=data)
     raise DecisionError('"next" must be "act" or "reply".')
 
 

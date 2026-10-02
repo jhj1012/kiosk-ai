@@ -16,7 +16,13 @@ from assistant.agent.executor import Executor
 from assistant.agent.history import Conversation
 from assistant.config import AgentConfig, ScreenConfig
 from assistant.llm.client import ChatModel, LlmError
-from assistant.llm.prompts import CONFIRM_QUESTION, CONFIRM_SCHEMA, OUT_OF_STEPS, SYSTEM_PROMPT
+from assistant.llm.prompts import (
+    CONFIRM_QUESTION,
+    CONFIRM_SCHEMA,
+    OUT_OF_STEPS,
+    PAYMENT_QUESTION,
+    SYSTEM_PROMPT,
+)
 from assistant.llm.schema import decision_schema, reply_schema
 from assistant.screen.base import Screen, ScreenError
 from assistant.screen.format import format_snapshot
@@ -30,6 +36,7 @@ SCREEN_ERROR_MESSAGE = (
     "죄송해요, 지금 키오스크 화면을 읽을 수 없어요. 키오스크가 켜져 있는지 확인해 주세요."
 )
 LLM_ERROR_MESSAGE = "죄송해요, 지금 잠시 문제가 생겼어요. 다시 한 번 말씀해 주시겠어요?"
+PAYMENT_CONTEXT_MESSAGES = 6  # customer messages the payment check looks at
 FALLBACK_MESSAGE = "죄송해요, 요청을 끝까지 처리하지 못했어요. 다시 한 번 말씀해 주시겠어요?"
 
 
@@ -51,7 +58,7 @@ class Agent:
         self.gate = ConfirmationGate(
             payment_pattern=config.payment_button_pattern,
             discard_pattern=config.discard_button_pattern,
-            confirm_payment=config.confirm_before_payment,
+            guard_payment=config.confirm_before_payment,
         )
         self.executor = Executor(screen, self.gate, settle=self._settle)
         self.last_reply: Reply | None = None
@@ -74,6 +81,10 @@ class Agent:
         except LlmError as e:
             log.error("llm error: %s", e)
             reply = Reply("tell", LLM_ERROR_MESSAGE)
+        if self.gate.paid_with_read_back:
+            # The order read-back given with the pay button comes first, in the same message.
+            message = f"{self.gate.paid_with_read_back} {reply.message}".strip()
+            reply = Reply(reply.kind, message, reply.choices)
         self._deliver(reply, snapshot)
         self.conversation.end_turn(reply.kind, reply.message)
         self.last_reply = reply
@@ -84,11 +95,11 @@ class Agent:
 
     def _run_turn(self, text: str) -> tuple[Reply, Snapshot]:
         snapshot = self._settle()
+        self.conversation.add_customer(text)
         confirm_check = None
         if self.last_reply is not None and self.last_reply.kind == "confirm":
             confirm_check = functools.partial(self._customer_agreed, self.last_reply.message, text)
-        self.gate.start_turn(confirm_check)
-        self.conversation.add_customer(text)
+        self.gate.start_turn(payment_check=self._customer_wants_to_pay, confirm_check=confirm_check)
 
         # The last thing that went wrong: an invalid answer, or failed actions on a screen.
         # At temperature 0 the model often repeats it exactly; then it is stuck.
@@ -109,6 +120,7 @@ class Agent:
                 break
             self.output.set_state(AssistantState.ACTING)
             self.output.show_elements(self._targets(decision, snapshot))
+            self.gate.start_batch(decision.read_back)
             execution = self.executor.run(decision.actions, snapshot)
             self.conversation.add_note(execution.report())
             last_failure = attempt if execution.failed else None
@@ -149,14 +161,24 @@ class Agent:
         return decision.reply
 
     def _customer_agreed(self, question: str, answer: str) -> bool:
+        """Did the customer say yes to the assistant's confirm question?"""
         prompt = CONFIRM_QUESTION.format(question=question, answer=answer)
+        return self._classify(prompt, f"confirmation {answer!r}")
+
+    def _customer_wants_to_pay(self) -> bool:
+        """Has the customer asked to pay, without changing the order since?"""
+        recent = self.conversation.customer_messages(PAYMENT_CONTEXT_MESSAGES)
+        lines = "\n".join(f"{i}. {m}" for i, m in enumerate(recent, start=1))
+        return self._classify(PAYMENT_QUESTION.format(messages=lines), "payment request")
+
+    def _classify(self, prompt: str, what: str) -> bool:
         result = self.llm.chat_json([{"role": "user", "content": prompt}], CONFIRM_SCHEMA)
         try:
-            agreed = json.loads(result.text).get("answer") == "yes"
+            yes = json.loads(result.text).get("answer") == "yes"
         except (json.JSONDecodeError, AttributeError):
-            agreed = False
-        log.info("payment confirmation %r -> agreed=%s", answer, agreed)
-        return agreed
+            yes = False
+        log.info("%s -> %s", what, yes)
+        return yes
 
     # ----- helpers -----
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -20,6 +21,7 @@ Message = dict[str, str]  # {"role": "system" | "user" | "assistant", "content":
 
 RETRY_CODES = {429, 500, 502, 503, 504}  # rate limit and temporary server errors
 RETRY_DELAYS_S = (1.0, 3.0)
+MAX_RETRY_WAIT_S = 60.0  # longer waits (e.g. a daily quota) fail at once
 
 
 class LlmError(Exception):
@@ -135,8 +137,19 @@ class GeminiChatModel:
             except Exception as e:  # google.genai.errors.APIError, network errors, timeouts
                 code = getattr(e, "code", None)
                 if code in RETRY_CODES and attempt < len(RETRY_DELAYS_S):
-                    log.warning("Gemini API error %s, retrying: %s", code, e)
-                    time.sleep(RETRY_DELAYS_S[attempt])
+                    # Rate limits say how long to wait ("retryDelay": "31s"), e.g. the free
+                    # tier's requests-per-minute limit; otherwise back off briefly.
+                    delay = retry_delay(e) or RETRY_DELAYS_S[attempt]
+                    if delay > MAX_RETRY_WAIT_S:
+                        raise LlmError(f"Gemini API request failed: {e}") from e
+                    log.warning("Gemini API error %s, retrying in %.0f s: %s", code, delay, e)
+                    time.sleep(delay)
                     continue
                 raise LlmError(f"Gemini API request failed: {e}") from e
         raise AssertionError("unreachable")
+
+
+def retry_delay(error: Exception) -> float | None:
+    """The wait a rate-limit error asks for, from its "retryDelay" field, if any."""
+    match = re.search(r"retryDelay['\"]?\s*:\s*['\"](\d+(?:\.\d+)?)s", str(error))
+    return float(match.group(1)) + 1 if match else None

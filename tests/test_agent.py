@@ -122,14 +122,17 @@ def test_step_limit_ends_with_one_reply_from_reply_only_schema() -> None:
 
 
 def test_repeating_a_failed_batch_ends_the_turn_early() -> None:
-    screen = FakeScreen(window(button("결제")))  # blocked by the payment gate every time
+    screen = FakeScreen(window(button("결제")))  # blocked every time: no read-back given
     llm = FakeLlm(
-        act(click("결제")), act(click("결제")), reply("결제 전에 주문을 확인할게요.", kind="tell")
+        act(click("결제")),
+        {"answer": "yes"},  # payment check (asked once per turn)
+        act(click("결제")),
+        reply("결제 전에 주문을 확인할게요.", kind="tell"),
     )
     agent, output = make_agent(screen, llm, max_steps_per_request=10)
-    agent.handle("결제")
-    assert len(llm.requests) == 3  # second identical batch is not run; then the final reply
-    assert llm.requests[2][1]["properties"]["next"]["enum"] == ["reply"]
+    agent.handle("결제해 주세요")
+    assert len(llm.requests) == 4  # second identical batch is not run; then the final reply
+    assert llm.requests[3][1]["properties"]["next"]["enum"] == ["reply"]
     assert output.messages == [("say", "결제 전에 주문을 확인할게요.")]
 
 
@@ -163,65 +166,54 @@ def pay_screen() -> FakeScreen:
     return screen
 
 
-def test_payment_button_is_blocked_without_confirmation() -> None:
+READ_BACK = "카드 결제, 아메리카노 2잔, 총 9000원입니다."
+
+
+def test_payment_is_blocked_when_the_customer_did_not_ask_to_pay() -> None:
     screen = pay_screen()
     llm = FakeLlm(
-        act(select("카드"), click("결제")),
-        reply("카드로 9000원 결제할까요?", kind="confirm"),
+        act(click("결제"), message=READ_BACK),
+        {"answer": "no"},  # payment check
+        reply("쿠폰은 없어요. 더 필요하신 게 있나요?"),
     )
     agent, output = make_agent(screen, llm)
-    agent.handle("카드로 결제해 주세요")
+    agent.handle("쿠폰 있어요?")
     assert ("invoke", "결제") not in screen.calls
-    assert ("toggle", "카드") in screen.calls
-    notes = [m["content"] for m in llm.requests[1][0] if m["content"].startswith("RESULT")]
-    assert "BLOCKED" in notes[-1]
-    assert output.messages == [("ask", ("카드로 9000원 결제할까요?", []))]
+    notes = [m["content"] for m in llm.requests[2][0] if m["content"].startswith("RESULT")]
+    assert "has not asked to pay" in notes[-1]
+    assert output.messages == [("ask", ("쿠폰은 없어요. 더 필요하신 게 있나요?", []))]
 
 
-def test_payment_allowed_after_confirm_and_yes() -> None:
+def test_payment_needs_a_read_back_but_no_question() -> None:
     screen = pay_screen()
     llm = FakeLlm(
-        reply("카드로 9000원 결제할까요?", kind="confirm"),
-        act(click("결제")),
-        {"answer": "yes"},  # confirmation check
+        act(select("카드"), click("결제")),  # no read-back: blocked
+        {"answer": "yes"},  # payment check
+        act(click("결제"), message=READ_BACK),
         reply("결제가 완료되었어요.", kind="tell"),
     )
     agent, output = make_agent(screen, llm)
-    agent.handle("결제할게요")
-    agent.handle("네, 결제해 주세요")
+    agent.handle("카드로 결제해 주세요")
+    assert screen.calls == [("toggle", "카드"), ("invoke", "결제")]
+    assert llm.requests[1][1] == CONFIRM_SCHEMA
+    assert "1. 카드로 결제해 주세요" in llm.requests[1][0][0]["content"]
+    # One message: the read-back first, then the reply. No "결제하시겠어요?" turn.
+    assert output.messages == [("say", f"{READ_BACK} 결제가 완료되었어요.")]
+
+
+def test_an_earlier_request_to_pay_counts() -> None:
+    screen = pay_screen()
+    llm = FakeLlm(
+        reply("결제수단은 어떤 걸로 하시겠어요?", choices=["카드"]),
+        act(select("카드"), click("결제"), message=READ_BACK),
+        {"answer": "yes"},
+        reply("결제가 완료되었어요.", kind="tell"),
+    )
+    agent, _ = make_agent(screen, llm)
+    agent.handle("이제 결제할게요")
+    agent.handle("카드요")
     assert ("invoke", "결제") in screen.calls
-    assert llm.requests[2][1] == CONFIRM_SCHEMA
-    assert "네, 결제해 주세요" in llm.requests[2][0][0]["content"]
-    assert [m[0] for m in output.messages] == ["ask", "say"]
-
-
-def test_payment_blocked_when_customer_does_not_agree() -> None:
-    screen = pay_screen()
-    llm = FakeLlm(
-        reply("카드로 9000원 결제할까요?", kind="confirm"),
-        act(click("결제")),
-        {"answer": "no"},
-        reply("알겠어요, 결제하지 않을게요.", kind="tell"),
-    )
-    agent, _ = make_agent(screen, llm)
-    agent.handle("결제할게요")
-    agent.handle("아니요 잠깐만요")
-    assert ("invoke", "결제") not in screen.calls
-
-
-def test_confirmation_only_counts_for_the_next_turn() -> None:
-    screen = pay_screen()
-    llm = FakeLlm(
-        reply("카드로 9000원 결제할까요?", kind="confirm"),
-        reply("쿠폰은 없어요.", kind="tell"),
-        act(click("결제")),
-        reply("결제 전에 다시 확인할게요.", kind="tell"),
-    )
-    agent, _ = make_agent(screen, llm)
-    agent.handle("결제할게요")
-    agent.handle("쿠폰 있어요?")
-    agent.handle("결제")
-    assert ("invoke", "결제") not in screen.calls
+    assert "1. 이제 결제할게요\n2. 카드요" in llm.requests[2][0][0]["content"]
 
 
 def test_payment_gate_can_be_disabled() -> None:
