@@ -113,6 +113,16 @@ def test_step_limit_ends_with_one_reply_from_reply_only_schema() -> None:
     assert output.messages == [("say", "세 번 눌렀지만 끝나지 않았어요.")]
 
 
+def test_repeating_a_failed_batch_ends_the_turn_early() -> None:
+    screen = FakeScreen(window(button("결제")))  # blocked by the payment gate every time
+    llm = FakeLlm(act(click(1)), act(click(1)), reply("결제 전에 주문을 확인할게요.", kind="tell"))
+    agent, output = make_agent(screen, llm, max_steps_per_request=10)
+    agent.handle("결제")
+    assert len(llm.requests) == 3  # second identical batch is not run; then the final reply
+    assert "anyOf" not in llm.requests[2][1]
+    assert output.messages == [("say", "결제 전에 주문을 확인할게요.")]
+
+
 def test_step_limit_falls_back_to_fixed_message() -> None:
     screen = FakeScreen(window(button("새로고침")))
     llm = FakeLlm(act(click(1)), act(click(1)), "not json")

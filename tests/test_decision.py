@@ -109,7 +109,7 @@ def test_decision_schema_limits_numbers_to_the_screen() -> None:
     assert by_do['{"const": "scroll"}']["id"]["enum"] == [1]
     assert "id" not in by_do['{"const": "type_text"}']  # no edit field: keypad typing
     assert reply["properties"]["choices"]["items"]["enum"] == [2, 3, 4, 5]
-    assert act["required"] == ["thought", "next", "actions"]
+    assert act["required"] == ["screen", "todo", "next", "actions"]
 
 
 def test_schema_variants_follow_the_screen() -> None:

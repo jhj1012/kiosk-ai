@@ -114,12 +114,12 @@ class RecordingOutput:
 
 
 def act(*actions: dict[str, Any], thought: str = "t") -> dict[str, Any]:
-    return {"thought": thought, "next": "act", "actions": list(actions)}
+    return {"screen": "s", "todo": thought, "next": "act", "actions": list(actions)}
 
 
 def reply(message: str, kind: str = "ask", choices: list[int] | None = None) -> dict[str, Any]:
     return {
-        "thought": "t",
+        "screen": "s",
         "next": "reply",
         "kind": kind,
         "message": message,

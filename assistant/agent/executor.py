@@ -142,9 +142,11 @@ class Executor:
             if after is not None and after.checked is not None and after.checked != on:
                 if on:
                     raise _Stop(f"ERROR: {element.label} did not become selected.")
-                raise _Stop(
-                    f"ERROR: {element.label} cannot be turned off here. If only one choice is "
-                    "allowed in its group, select another choice instead."
+                # A single-choice group keeps one choice on; selecting another one switches it.
+                # Not an error: the batch usually selects the other choice next.
+                return after_screen, (
+                    f"NOTE: {element.label} stays selected; in a single-choice group, select "
+                    "another choice instead of turning this one off"
                 )
             return after_screen, f"{word} {element.label}"
         if not on:

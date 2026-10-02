@@ -54,7 +54,7 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         raise DecisionError(f"Your answer was not valid JSON ({e.msg}). Keep it short.") from e
     if not isinstance(data, dict):
         raise DecisionError("Your answer must be a JSON object.")
-    thought = str(data.get("thought", ""))
+    thought = " | ".join(str(data[k]) for k in ("screen", "todo", "thought") if data.get(k))
     next_step = data.get("next")
     if next_step == "reply":
         return Decision(thought, reply=_parse_reply(data, snapshot), raw=data)

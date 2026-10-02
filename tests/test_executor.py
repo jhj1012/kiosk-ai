@@ -42,12 +42,15 @@ def test_unselect_turns_off_and_rejects_buttons() -> None:
     assert result.lines[1] == 'ERROR: Button "담기" is not a choice that can be turned off.'
 
 
-def test_unselect_reports_exclusive_choice_that_stays_on() -> None:
-    hot = check("HOT", on=True)
-    screen = FakeScreen(window(hot, check("ICE")))
-    screen.toggle = lambda element: None  # an exclusive group refuses to uncheck
-    result = run(screen, ActionRequest("unselect", ref=1))
-    assert result.failed and "select another choice" in result.lines[0]
+def test_unselect_in_single_choice_group_is_a_note_and_the_batch_continues() -> None:
+    screen = FakeScreen(window(check("HOT", on=True), check("ICE")))
+    real_toggle = screen.toggle
+    # An exclusive group refuses to uncheck its selected choice.
+    screen.toggle = lambda e: None if e.name == "HOT" else real_toggle(e)
+    result = run(screen, ActionRequest("unselect", ref=1), ActionRequest("select", ref=2))
+    assert not result.failed
+    assert result.lines[0].startswith('NOTE: CheckBox "HOT" stays selected')
+    assert result.lines[1] == 'selected CheckBox "ICE"'
 
 
 def test_batch_stops_when_the_screen_changes() -> None:

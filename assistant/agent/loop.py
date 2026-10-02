@@ -87,20 +87,26 @@ class Agent:
         self.gate.start_turn(confirm_check)
         self.conversation.add_customer(text)
 
+        failed: tuple[object, ...] | None = None  # actions + screen of the last failed batch
         for step in range(1, self.config.max_steps_per_request + 1):
             decision = self._decide(snapshot, step)
             if decision is None:
                 continue  # unusable answer; the error was noted for the model
             if decision.reply is not None:
                 return decision.reply, snapshot
+            if failed == (decision.actions, snapshot.signature()):
+                # Same failing actions on the same screen again: the model is stuck.
+                log.warning("model repeated failed actions; ending the turn")
+                break
             self.output.set_state(AssistantState.ACTING)
             self.output.show_elements(self._targets(decision, snapshot))
             execution = self.executor.run(decision.actions, snapshot)
             self.conversation.add_note(execution.report())
+            failed = (decision.actions, snapshot.signature()) if execution.failed else None
             snapshot = execution.snapshot
             self.output.set_state(AssistantState.THINKING)
-
-        log.warning("step limit (%d) reached", self.config.max_steps_per_request)
+        else:
+            log.warning("step limit (%d) reached", self.config.max_steps_per_request)
         return self._final_reply(snapshot), snapshot
 
     def _decide(self, snapshot: Snapshot, step: int) -> Decision | None:

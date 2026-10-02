@@ -10,7 +10,7 @@ from typing import Any
 
 from assistant.screen.model import Pattern, Snapshot
 
-THOUGHT_MAX = 300
+NOTE_MAX = 150  # "screen" and "todo": short reasoning written before deciding
 MESSAGE_MAX = 400
 TEXT_MAX = 40
 MAX_ACTIONS = 12
@@ -27,7 +27,8 @@ def decision_schema(snapshot: Snapshot) -> dict[str, Any]:
 def reply_schema(snapshot: Snapshot) -> dict[str, Any]:
     """Only a reply: used when the step limit is reached."""
     return _object(
-        thought=_string(THOUGHT_MAX),
+        screen=_string(NOTE_MAX),
+        todo=_string(NOTE_MAX),
         next={"const": "reply"},
         kind={"type": "string", "enum": list(REPLY_KINDS)},
         message=_string(MESSAGE_MAX),
@@ -72,7 +73,8 @@ def _act_schema(snapshot: Snapshot) -> dict[str, Any]:
         )
     )
     return _object(
-        thought=_string(THOUGHT_MAX),
+        screen=_string(NOTE_MAX),
+        todo=_string(NOTE_MAX),
         next={"const": "act"},
         actions={
             "type": "array",
