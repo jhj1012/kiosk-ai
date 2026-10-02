@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --only-group dev
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - name: Architecture check (assistant must not import kiosk_app)
+        run: uv run --no-sync lint-imports
+      - name: Tests
+        run: uv run --no-sync pytest || [ $? -eq 5 ]  # exit 5 = no tests collected yet

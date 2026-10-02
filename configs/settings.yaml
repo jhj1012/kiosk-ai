@@ -1,0 +1,12 @@
+# Runtime settings for the assistant.
+
+target_window:
+  title: "Test Kiosk"       # window title the assistant attaches to
+
+audio:
+  sample_rate: 16000
+  push_to_talk_key: space
+
+agent:
+  max_steps_per_request: 10
+  confirm_before_payment: true

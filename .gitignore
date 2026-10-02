@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Local models and data (never commit)
+models/*
+!models/.gitkeep
+*.gguf
+*.onnx
+*.bin
+*.safetensors
+*.pt
+
+# Audio recordings and logs
+recordings/
+*.wav
+*.mp3
+logs/
+
+# Local overrides and secrets
+.env
+*.local.yaml
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
