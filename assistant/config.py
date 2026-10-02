@@ -37,6 +37,46 @@ class LlmConfig:
 
 
 @dataclass(frozen=True)
+class SttConfig:
+    """Speech recognition: a separate Gemini model, so it has its own rate-limit quota."""
+
+    model: str = "gemini-3.1-flash-lite"
+    thinking_level: str = "minimal"
+    temperature: float = 1.0
+    max_output_tokens: int = 512
+    timeout_s: float = 15.0
+    vocabulary_hints: bool = True  # tell the model the names on the kiosk screen
+
+    def llm_config(self, api_key_env: str) -> LlmConfig:
+        return LlmConfig(
+            model=self.model,
+            api_key_env=api_key_env,
+            thinking_level=self.thinking_level,
+            temperature=self.temperature,
+            max_output_tokens=self.max_output_tokens,
+            timeout_s=self.timeout_s,
+        )
+
+
+@dataclass(frozen=True)
+class AudioConfig:
+    """Microphone and voice activity detection (levels are RMS of 16-bit samples)."""
+
+    sample_rate: int = 16000
+    device: int | str | None = None  # None = Windows default; an index or part of the name
+    frame_ms: int = 30
+    calibration_s: float = 1.0  # background noise is measured this long at start-up
+    threshold_factor: float = 3.0  # speech is this many times louder than the noise
+    min_threshold: float = 300.0  # ...and never quieter than this
+    start_ms: int = 150  # this much loud audio in a row starts an utterance
+    pre_roll_ms: int = 300  # audio kept from before the start, so no syllable is cut
+    silence_end_ms: int = 800  # this much quiet ends the utterance
+    min_utterance_ms: int = 300  # less loud audio than this is a cough or a click: dropped
+    max_utterance_s: float = 15.0  # longer utterances are cut here
+    echo_tail_ms: int = 300  # after the assistant stops speaking, keep ignoring the mic
+
+
+@dataclass(frozen=True)
 class ScreenConfig:
     window_title: str
     settle_timeout_s: float = 5.0
@@ -59,6 +99,8 @@ class Config:
     llm: LlmConfig
     screen: ScreenConfig
     agent: AgentConfig
+    stt: SttConfig = SttConfig()
+    audio: AudioConfig = AudioConfig()
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -88,10 +130,13 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     llm = _build(LlmConfig, models.get("llm", {}), "models.yaml: llm")
     if llm.provider != "gemini":
         raise ConfigError(f"models.yaml: llm.provider {llm.provider!r} is not supported (gemini)")
-    if llm.thinking_level not in VALID_THINKING_LEVELS:
-        raise ConfigError(
-            f"models.yaml: llm.thinking_level must be one of {', '.join(VALID_THINKING_LEVELS)}"
-        )
+    stt = _build(SttConfig, models.get("stt", {}), "models.yaml: stt")
+    for where, level in (("llm", llm.thinking_level), ("stt", stt.thinking_level)):
+        if level not in VALID_THINKING_LEVELS:
+            raise ConfigError(
+                f"models.yaml: {where}.thinking_level must be one of "
+                f"{', '.join(VALID_THINKING_LEVELS)}"
+            )
     screen_values = {
         "window_title": settings.get("target_window", {}).get("title"),
         **settings.get("screen", {}),
@@ -100,7 +145,9 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     agent = _build(AgentConfig, settings.get("agent", {}), "settings.yaml: agent")
     if agent.max_steps_per_request < 1:
         raise ConfigError("settings.yaml: agent.max_steps_per_request must be at least 1")
-    return Config(llm=llm, screen=screen, agent=agent)
+    audio = _build(AudioConfig, settings.get("audio", {}), "settings.yaml: audio")
+    _check_audio(audio)
+    return Config(llm=llm, screen=screen, agent=agent, stt=stt, audio=audio)
 
 
 def load_env_file(path: Path = ENV_FILE) -> list[str]:
@@ -123,6 +170,15 @@ def load_env_file(path: Path = ENV_FILE) -> list[str]:
             os.environ[key] = value
             loaded.append(key)
     return loaded
+
+
+def _check_audio(audio: AudioConfig) -> None:
+    if audio.sample_rate < 8000 or audio.frame_ms not in (10, 20, 30):
+        raise ConfigError("settings.yaml: audio needs sample_rate >= 8000 and frame_ms 10/20/30")
+    if audio.calibration_s <= 0 or audio.max_utterance_s <= 0 or audio.silence_end_ms <= 0:
+        raise ConfigError("settings.yaml: audio times must be positive")
+    if audio.threshold_factor < 1:
+        raise ConfigError("settings.yaml: audio.threshold_factor must be at least 1")
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

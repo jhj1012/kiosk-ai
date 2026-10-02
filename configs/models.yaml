@@ -13,6 +13,16 @@ llm:
   timeout_s: 30             # give up on one request after this many seconds (then retry)
   api_key_env: GEMINI_API_KEY
 
+# Speech recognition (--voice): a separate call on a DIFFERENT model than the agent, so it has
+# its own rate-limit quota (free tier ~15 requests/min per model). One call per utterance.
+stt:
+  model: gemini-3.1-flash-lite   # see docs/decisions.md for the measurements
+  thinking_level: minimal   # transcription needs no thinking; more only adds latency
+  temperature: 1.0
+  max_output_tokens: 512
+  timeout_s: 15
+  vocabulary_hints: true    # send the names on the kiosk screen (menu items) as spelling hints
+
 tts:
   engine: pyttsx3           # Windows built-in speech (planned phase), no AI model to download
   voice: Heami              # Microsoft Heami (Korean), install via Windows language settings
