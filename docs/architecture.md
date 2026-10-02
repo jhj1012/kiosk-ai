@@ -3,9 +3,9 @@
 ## Two programs, one repo
 
 ```
-┌──────────────────────┐                 ┌──────────────────────────────┐
-│  kiosk_app (PySide6) │  ◄── UIA ────   │  assistant                   │
-│  - menu / cart / pay │   read tree,    │  audio → stt → agent → tts   │
+┌──────────────────────┐                 ┌──────────────────────────────┐   HTTPS   ┌────────────┐
+│  kiosk_app (PySide6) │  ◄── UIA ────   │  assistant                   │ ◄───────► │ Gemini API │
+│  - menu / cart / pay │   read tree,    │  audio → stt → agent → tts   │           └────────────┘
 │  - knows nothing     │   click, type   │            │                 │
 │    about the AI      │                 │            ▼                 │
 └──────────────────────┘                 │         screen (UIA)         │
@@ -13,17 +13,18 @@
 ```
 
 The two programs run as separate processes. The only connection between them is the
-Windows accessibility (UI Automation) layer. `assistant` must never import `kiosk_app`
+Windows accessibility (UI Automation) layer. The AI model runs in the cloud (Gemini API); the
+assistant sends it the conversation and the text of the kiosk screen. `assistant` must never import `kiosk_app`
 (checked by `import-linter` in CI).
 
 ## assistant modules
 
 | Module | Responsibility |
 |---|---|
-| `assistant/config.py` | Typed settings from `configs/*.yaml`, with `*.local.yaml` merged on top. |
+| `assistant/config.py` | Typed settings from `configs/*.yaml`, with `*.local.yaml` merged on top; loads the API key from a git-ignored `.env`. |
 | `assistant/userio` | `UserInput.listen()` and the event-based `UserOutput` (`say`, `ask`, `show_elements`, `set_state`). Console implementation now; STT, TTS and the overlay implement the same interfaces later. |
 | `assistant/screen` | Read the target window's UIA tree into a `Snapshot` (`reader.py`, pure Python), render it for the LLM (`format.py`), wait for the screen to settle (`settle.py`). `uia.py` is the only Windows/pywinauto module. |
-| `assistant/llm` | Ollama client (structured JSON output), the per-screen JSON schema, the system prompt. |
+| `assistant/llm` | Gemini API client (structured JSON output, retries, clear key/model errors), the per-screen JSON schema, the system prompt. |
 | `assistant/agent` | One user turn: decide, act, reply (`loop.py`); run actions (`executor.py`); safety gate for payment and order-discarding buttons (`confirm_gate.py`); conversation history (`history.py`); the listen loop (`session.py`). |
 | `assistant/audio`, `stt`, `tts` *(planned)* | Microphone, speech recognition, speech output. |
 | `assistant/overlay` *(planned)* | PySide6 overlay window: avatar, subtitles, kiosk element images, blurred background. |
@@ -42,7 +43,7 @@ user text ──► read screen ──► LLM (history + CURRENT SCREEN) ──�
 
 1. `screen` reads the target window and waits until it has settled.
 2. The LLM gets the system prompt, the history and the **current** screen as the last message.
-3. It answers with JSON in one of two shapes (enforced by an Ollama JSON schema):
+3. It answers with JSON in one of two shapes (Gemini structured output with a JSON schema):
    - `act`: a short list of actions on the current screen. The executor runs them, the screen
      is read again, a `RESULT` note is added, and the loop asks the LLM again.
    - `reply`: a message to the user (`ask`, `tell`, or `confirm`). This ends the turn.
@@ -93,7 +94,9 @@ the planned overlay.
   cart) is rejected, so a default cannot silently decide for the customer. Entries are only
   enforced if they appear on the screen, and count as answered if the same answer selects an
   option containing them.
-- Why JSON schema instead of native tool calls: see [decisions.md](decisions.md).
+- The schema uses only keywords Gemini supports (no `const`, no string lengths; a unit test
+  checks this). `max_output_tokens` stops runaway answers.
+- Why JSON schema instead of function calling: see [decisions.md](decisions.md).
 
 ### Executor rules
 
@@ -119,9 +122,8 @@ back) and a small yes/no classification of the user's answer says yes.
 
 Only the latest screen is ever in the context. Finished turns are condensed to the user's
 words and the final reply; the actions and results in between are only kept for the current
-turn. At ~6.5k prompt tokens the 14B model started producing garbage, so this matters. The
-stable prefix also lets Ollama reuse its prompt cache: on the reference iGPU the first call of
-a turn takes 10–25 s, later calls of the same turn reuse most of the prompt.
+turn. Long contexts made answers worse in tests (and cost more), so this matters. The stable
+prefix also lets the API reuse its prompt cache between the calls of one turn.
 
 ### Threading
 
