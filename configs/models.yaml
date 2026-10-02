@@ -1,23 +1,19 @@
 # Shared model settings for the whole team.
 # Per-machine overrides go in configs/models.local.yaml (git-ignored).
+# The API key is NOT stored here: set GEMINI_API_KEY (see docs/setup.md).
 
 llm:
-  provider: ollama
-  host: http://localhost:11434
-  model: qwen2.5:7b-instruct-q4_K_M      # 4-bit quantized, ~5 GB VRAM
-  # model: qwen2.5:14b-instruct-q4_K_M   # better Korean, ~9 GB VRAM
-  # model: qwen2.5:3b-instruct-q4_K_M    # weak machines
-  temperature: 0.0
-
-stt:
-  engine: faster-whisper
-  model: large-v3-turbo
-  language: ko
-  device: cuda              # cuda | cpu
-  compute_type: int8_float16  # use int8 on cpu
-  vad_filter: true
+  provider: gemini
+  model: gemini-3.5-flash-lite         # fast (1-6 s per step in tests) and handled all scenarios
+  # model: gemini-3.8-flash            # stronger agent model; was overloaded (~30 s) when tested
+  # model: gemini-3.1-pro-preview      # strongest reasoning, slower, no free tier
+  thinking_level: low       # minimal | low | medium | high: more thinking = smarter but slower
+  temperature: 1.0          # Google recommends the default 1.0 for Gemini 3 models
+  max_output_tokens: 2048   # per answer, thinking included; stops runaway answers
+  timeout_s: 30             # give up on one request after this many seconds (then retry)
+  api_key_env: GEMINI_API_KEY
 
 tts:
-  engine: pyttsx3
+  engine: pyttsx3           # Windows built-in speech (planned phase), no AI model to download
   voice: Heami              # Microsoft Heami (Korean), install via Windows language settings
   rate: 180

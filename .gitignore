@@ -8,15 +8,6 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
-# Local models and data (never commit)
-models/*
-!models/.gitkeep
-*.gguf
-*.onnx
-*.bin
-*.safetensors
-*.pt
-
 # Audio recordings and logs
 recordings/
 *.wav
