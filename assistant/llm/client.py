@@ -101,6 +101,7 @@ class GeminiChatModel:
             "response_mime_type": "application/json",
             "response_json_schema": schema,
             "thinking_config": {"thinking_level": self.config.thinking_level.upper()},
+            "automatic_function_calling": {"disable": True},  # no tools; silences an SDK warning
         }
         start = time.monotonic()
         response = self._generate(contents, config)

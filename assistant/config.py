@@ -33,7 +33,7 @@ class LlmConfig:
     thinking_level: str = "low"
     temperature: float = 1.0
     max_output_tokens: int = 2048  # includes thinking tokens; stops runaway answers
-    timeout_s: float = 60.0
+    timeout_s: float = 30.0
 
 
 @dataclass(frozen=True)

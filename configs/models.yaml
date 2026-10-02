@@ -4,13 +4,13 @@
 
 llm:
   provider: gemini
-  model: gemini-3.8-flash              # stable, recommended for agents
-  # model: gemini-3.5-flash-lite       # fastest and cheapest
+  model: gemini-3.5-flash-lite         # fast (1-6 s per step in tests) and handled all scenarios
+  # model: gemini-3.8-flash            # stronger agent model; was overloaded (~30 s) when tested
   # model: gemini-3.1-pro-preview      # strongest reasoning, slower, no free tier
   thinking_level: low       # minimal | low | medium | high: more thinking = smarter but slower
   temperature: 1.0          # Google recommends the default 1.0 for Gemini 3 models
   max_output_tokens: 2048   # per answer, thinking included; stops runaway answers
-  timeout_s: 60             # give up on one request after this many seconds
+  timeout_s: 30             # give up on one request after this many seconds (then retry)
   api_key_env: GEMINI_API_KEY
 
 tts:

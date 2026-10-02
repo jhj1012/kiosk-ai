@@ -103,9 +103,8 @@ def test_clean_message() -> None:
     assert clean_message("[12] 아메리카노를 [3]골랐어요") == "아메리카노를 골랐어요"
 
 
-def variants_by_do(schema: dict) -> dict[str, dict]:
-    variants = schema["properties"]["actions"]["items"]["anyOf"]
-    return {"/".join(v["properties"]["do"]["enum"]): v["properties"] for v in variants}
+def action_item(schema: dict) -> dict:
+    return schema["properties"]["actions"]["items"]
 
 
 def all_keys(schema: object) -> set[str]:
@@ -118,12 +117,13 @@ def all_keys(schema: object) -> set[str]:
 
 def test_decision_schema_limits_targets_to_the_screen() -> None:
     schema = decision_schema(SCREEN)
-    by_do = variants_by_do(schema)
+    item = action_item(schema)
     controls = ["HOT", "ICE", "수량 증가", "담기"]
-    assert by_do["click"]["target"]["enum"] == controls
-    assert by_do["select/unselect"]["target"]["enum"] == controls
-    assert by_do["scroll"]["target"]["enum"] == ["옵션"]
-    assert "target" not in by_do["type_text"]  # no edit field: keypad typing
+    assert item["properties"]["target"]["enum"] == ["옵션", *controls]  # region for scrolling
+    assert item["properties"]["do"]["enum"] == [
+        "click", "select", "unselect", "type_text", "scroll", "wait",
+    ]  # fmt: skip
+    assert item["required"] == ["do"]
     assert schema["properties"]["choices"]["items"]["enum"] == controls
     assert schema["properties"]["next"]["enum"] == ["act", "reply"]
     assert schema["required"] == ["screen", "todo", "need_to_ask", "next"]
@@ -132,25 +132,26 @@ def test_decision_schema_limits_targets_to_the_screen() -> None:
 
 def test_schemas_use_only_keywords_gemini_supports() -> None:
     supported = {
-        "type", "properties", "required", "items", "enum", "anyOf", "minItems", "maxItems",
+        "type", "properties", "required", "items", "enum", "minItems", "maxItems",
         "minimum", "maximum", "description",
     }  # fmt: skip
+    property_names = {"do", "target", "times", "text", "direction", "seconds"}
     for schema in (decision_schema(SCREEN), reply_schema(SCREEN)):
-        keywords = all_keys(schema) - set(schema["properties"]) - {"do", "target", "times"}
-        keywords -= {"text", "direction", "seconds"}  # property names inside variants
+        keywords = all_keys(schema) - set(schema["properties"]) - property_names
         assert keywords <= supported, keywords - supported
 
 
-def test_schema_variants_follow_the_screen() -> None:
+def test_schema_follows_the_screen() -> None:
     form = snapshot(edit("이름"), button("확인"))
-    by_do = variants_by_do(decision_schema(form))
-    assert by_do["type_text"]["target"]["enum"] == ["이름"]
-    assert "scroll" not in by_do
+    item = action_item(decision_schema(form))
+    assert item["properties"]["target"]["enum"] == ["이름", "확인"]
+    assert "scroll" not in item["properties"]["do"]["enum"]
 
     empty = snapshot(text("결제 중입니다"))
-    choices = reply_schema(empty)["properties"]["choices"]
-    assert choices["maxItems"] == 0
-    assert set(variants_by_do(decision_schema(empty))) == {"type_text", "wait"}
+    assert reply_schema(empty)["properties"]["choices"]["maxItems"] == 0
+    item = action_item(decision_schema(empty))
+    assert item["properties"]["do"]["enum"] == ["type_text", "wait"]
+    assert "target" not in item["properties"]
     final = reply_schema(SCREEN)
     assert final["properties"]["next"]["enum"] == ["reply"]
     assert set(final["required"]) == {

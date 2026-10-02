@@ -44,13 +44,13 @@ screen (no screenshots, no audio yet).
 
 ### Choosing another model
 
-The model is set in `configs/models.yaml` (default `gemini-3.8-flash`). To try another one on
-your PC only, create `configs/models.local.yaml` (git-ignored):
+The model is set in `configs/models.yaml` (default `gemini-3.5-flash-lite`). To try another
+one on your PC only, create `configs/models.local.yaml` (git-ignored):
 
 ```yaml
 llm:
-  model: gemini-3.5-flash-lite   # faster and cheaper
-  thinking_level: minimal        # minimal | low | medium | high
+  model: gemini-3.8-flash        # stronger, but slower
+  thinking_level: medium         # minimal | low | medium | high
 ```
 
 `uv run python -m assistant --model <name>` also works for a single run.

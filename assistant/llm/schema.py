@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from assistant.screen.model import Pattern, Snapshot
+from assistant.screen.model import Snapshot
 
 ASK_MAX = 6  # "need_to_ask": required choices on the screen the customer has not given
 MAX_ACTIONS = 6  # real batches are ~4 (choices, quantity, add); long ones were garbage
@@ -32,7 +32,7 @@ def decision_schema(snapshot: Snapshot) -> dict[str, Any]:
         actions={
             "type": "array",
             "description": 'Only for "act": the actions to do now, in order.',
-            "items": {"anyOf": _action_variants(snapshot)},
+            "items": _action_item(snapshot),
             "maxItems": MAX_ACTIONS,
         },
         **_reply_fields(snapshot, 'Only for "reply": '),
@@ -70,38 +70,30 @@ def _reply_fields(snapshot: Snapshot, prefix: str) -> dict[str, Any]:
     }
 
 
-def _action_variants(snapshot: Snapshot) -> list[dict[str, Any]]:
-    controls = _control_keys(snapshot)
-    edits = [
-        e.key
-        for e in snapshot.elements
-        if e.ref is not None and Pattern.VALUE in e.patterns and e.kind in {"Edit", "ComboBox"}
-    ]
-    scrollable = [e.key for e in snapshot.elements if e.scroll is not None and e.ref is not None]
-    variants: list[dict[str, Any]] = []
-    if controls:
-        variants.append(
-            _object(
-                do=_enum(["click"]),
-                target=_enum(controls),
-                times={"type": "integer", "minimum": 1, "maximum": MAX_TIMES},
-            )
-        )
-        variants.append(_object(do=_enum(["select", "unselect"]), target=_enum(controls)))
-    if edits:
-        variants.append(_object(do=_enum(["type_text"]), target=_enum(edits), text=_string()))
-    else:
-        variants.append(_object(do=_enum(["type_text"]), text=_string()))
-    if scrollable:
-        variants.append(
-            _object(do=_enum(["scroll"]), target=_enum(scrollable), direction=_enum(["up", "down"]))
-        )
-    variants.append(
-        _object(
-            do=_enum(["wait"]), seconds={"type": "integer", "minimum": 1, "maximum": MAX_WAIT_S}
-        )
+def _action_item(snapshot: Snapshot) -> dict[str, Any]:
+    """One flat action object; `decision.py` checks which fields each action needs.
+
+    Separate anyOf variants per action repeat the list of names and made Gemini reject the
+    schema as too complex (400 INVALID_ARGUMENT) on screens with ~18 controls.
+    """
+    targets = [e.key for e in snapshot.elements if e.ref is not None]  # controls and regions
+    actions = (
+        ["click", "select", "unselect"]
+        if any(not e.is_region for e in snapshot.elements if e.ref)
+        else []
     )
-    return variants
+    actions += ["type_text"]
+    if snapshot.scroll_refs:
+        actions.append("scroll")
+    actions.append("wait")
+    properties: dict[str, Any] = {"do": _enum(actions)}
+    if targets:
+        properties["target"] = _enum(targets, "Exact name of the control (not for wait).")
+    properties["times"] = {"type": "integer", "minimum": 1, "maximum": MAX_TIMES}
+    properties["text"] = _string("Only for type_text.")
+    properties["direction"] = _enum(["up", "down"], "Only for scroll.")
+    properties["seconds"] = {"type": "integer", "minimum": 1, "maximum": MAX_WAIT_S}
+    return {"type": "object", "properties": properties, "required": ["do"]}
 
 
 def _control_keys(snapshot: Snapshot) -> list[str]:

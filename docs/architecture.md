@@ -95,7 +95,9 @@ the planned overlay.
   enforced if they appear on the screen, and count as answered if the same answer selects an
   option containing them.
 - The schema uses only keywords Gemini supports (no `const`, no string lengths; a unit test
-  checks this). `max_output_tokens` stops runaway answers.
+  checks this). Each action is one flat object (`do`, `target`, `times`, ...): separate `anyOf`
+  variants per action repeated the list of names and Gemini rejected the schema as too complex
+  (400) on screens with ~18 controls. `max_output_tokens` stops runaway answers.
 - Why JSON schema instead of function calling: see [decisions.md](decisions.md).
 
 ### Executor rules
