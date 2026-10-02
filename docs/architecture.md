@@ -143,7 +143,14 @@ The assistant runs all day, like the kiosk. Each customer gets a fresh conversat
 previous customer's messages, remembered answers and payment approval are neither reused nor
 sent to the model again (`agent/customer.py`):
 
-- At start-up the assistant learns the kiosk's **idle screen** (the screen it shows while
+- **From what is said:** in a busy cafe the next customer starts talking before any timer
+  runs out. If a message sounds like a different person (a greeting and a new order right
+  after a payment, "다음 손님이에요", ...), the model replies with kind `new_customer` and asks
+  "새로 주문하시는 손님이신가요?". On yes (a small yes/no classification), the agent presses the
+  kiosk's order-discarding button (e.g. "처음으로", if the kiosk is not already on its idle
+  screen), starts a new conversation and continues with the new customer's original request,
+  so they do not have to repeat it. On no, the conversation simply continues.
+- **From time, as a fallback:** at start-up the assistant learns the kiosk's **idle screen** (the screen it shows while
   waiting; identified by its set of controls, so changing texts do not matter).
 - Before each message: if the kiosk is back on the idle screen and nobody talked for
   `agent.new_customer_after_s` (30 s), a new conversation starts. A customer who asks

@@ -58,6 +58,10 @@ class ConfirmationGate:
     def needs_confirmation(self, element: Element) -> bool:
         return self._kind(element) is not None
 
+    def discards_order(self, element: Element) -> bool:
+        """True for buttons that throw the whole order away (e.g. back to the start)."""
+        return self._kind(element) == "discard"
+
     def start_turn(self, *, payment_check: Check | None, confirm_check: Check | None) -> None:
         """Begin a customer turn.
 

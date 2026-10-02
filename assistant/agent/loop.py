@@ -44,6 +44,19 @@ NEW_CUSTOMER_NOTE = (
     "NOTE: A new customer is talking now. The screen still shows an unfinished order from "
     "someone else. Before using it, ask whether to continue that order or start over."
 )
+NEW_CONVERSATION_NOTE = (
+    "NOTE: The customer confirmed they are a new customer. The previous customer's order was "
+    "cleared and this is a new conversation. Continue with their request."
+)
+ORDER_FINISHED_NOTE = (
+    "NOTE: The order in this conversation is already paid and finished. You may answer questions "
+    "about it, but before pressing anything for a new order, ask whether the speaker is a new "
+    'customer ("kind": "new_customer", e.g. "새로 주문하시는 손님이신가요?").'
+)
+ORDER_FINISHED_BLOCK = (
+    "BLOCKED: the order is already paid and finished, so nothing may be pressed now. Answer the "
+    'question, or ask whether the speaker is a new customer ("kind": "new_customer").'
+)
 FALLBACK_MESSAGE = "죄송해요, 요청을 끝까지 처리하지 못했어요. 다시 한 번 말씀해 주시겠어요?"
 
 
@@ -75,16 +88,32 @@ class Agent:
             clock=clock,
         )
         self.last_reply: Reply | None = None
+        self._new_customer_request = ""  # message that made us ask "새로 오신 손님이신가요?"
+        # True after a payment. Once the kiosk is back on its idle screen the order is over, and
+        # the next order may be someone else's: ask before acting.
+        self._order_finished = False
 
     def start(self) -> None:
-        """Call once when the assistant starts: the kiosk's current screen is its idle screen."""
-        self.customers.learn_idle_screen(self._settle())
+        """Call once when the assistant starts, before anyone talks.
+
+        Nobody is being served yet, so a leftover order on the screen belongs to no one: it is
+        cleared with the order-discarding button (e.g. "처음으로"). The screen the kiosk then
+        shows is learned as its idle screen.
+        """
+        snapshot = self._settle()
+        home = self._discard_button(snapshot)
+        if home is not None:
+            log.info("start: clearing a leftover order with %s", home.label)
+            self.screen.invoke(home)
+            snapshot = self._settle()
+        self.customers.learn_idle_screen(snapshot)
 
     def reset(self) -> None:
         """Forget the conversation: the next message comes from a new customer."""
         self.conversation.clear()
         self.last_reply = None
         self.customers.forget()
+        self._order_finished = False
 
     def handle(self, text: str) -> Reply:
         """Handle one customer message. Always ends with exactly one say() or ask()."""
@@ -92,7 +121,14 @@ class Agent:
         self.output.set_state(AssistantState.THINKING)
         snapshot: Snapshot | None = None
         try:
-            reply, snapshot = self._run_turn(text)
+            note = None
+            asked = self.last_reply is not None and self.last_reply.kind == "new_customer"
+            if asked and self._is_new_customer(text):
+                self._start_new_customer()
+                text, note = self._new_customer_request or text, NEW_CONVERSATION_NOTE
+            elif asked:
+                self._order_finished = False  # the same customer goes on (e.g. orders more)
+            reply, snapshot = self._run_turn(text, note)
         except ScreenError as e:
             log.error("screen error: %s", e)
             reply = Reply("tell", SCREEN_ERROR_MESSAGE)
@@ -103,6 +139,8 @@ class Agent:
             # The order read-back given with the pay button comes first, in the same message.
             message = f"{self.gate.paid_with_read_back} {reply.message}".strip()
             reply = Reply(reply.kind, message, reply.choices)
+        if reply.kind == "new_customer":
+            self._new_customer_request = text
         self._deliver(reply, snapshot)
         self.conversation.end_turn(reply.kind, reply.message)
         self.last_reply = reply
@@ -112,7 +150,7 @@ class Agent:
 
     # ----- one turn -----
 
-    def _run_turn(self, text: str) -> tuple[Reply, Snapshot]:
+    def _run_turn(self, text: str, note: str | None = None) -> tuple[Reply, Snapshot]:
         snapshot = self._settle()
         switch = self.customers.check(snapshot)
         if switch is not Switch.SAME:
@@ -121,6 +159,10 @@ class Agent:
         self.conversation.add_customer(text)
         if switch is Switch.ABANDONED:
             self.conversation.add_note(NEW_CUSTOMER_NOTE)
+        if note:
+            self.conversation.add_note(note)
+        if self._order_finished and self.customers.is_idle(snapshot):
+            self.conversation.add_note(ORDER_FINISHED_NOTE)
         confirm_check = None
         if self.last_reply is not None and self.last_reply.kind == "confirm":
             confirm_check = functools.partial(self._customer_agreed, self.last_reply.message, text)
@@ -139,6 +181,15 @@ class Agent:
                 continue  # the error was noted for the model
             if decision.reply is not None:
                 return decision.reply, snapshot
+            if self._order_finished and self.customers.is_idle(snapshot):
+                # Code, not just the prompt: in a live test the model took "여보세요?" after a
+                # payment as a new order and reused the previous customer's choices.
+                log.info("blocked: order finished, new-customer question needed")
+                self.conversation.add_note(ORDER_FINISHED_BLOCK)
+                if last_failure == ORDER_FINISHED_BLOCK:
+                    break
+                last_failure = ORDER_FINISHED_BLOCK
+                continue
             attempt = (decision.actions, snapshot.signature())
             if attempt == last_failure:
                 log.warning("model repeated failed actions; ending the turn")
@@ -150,6 +201,7 @@ class Agent:
             self.conversation.add_note(execution.report())
             if self.gate.paid_with_read_back:
                 self.conversation.mark_payment()  # this request to pay is used up
+                self._order_finished = True
             last_failure = attempt if execution.failed else None
             snapshot = execution.snapshot
             self.output.set_state(AssistantState.THINKING)
@@ -171,6 +223,12 @@ class Agent:
             self.conversation.add_note(f"ERROR: {e} Answer again.")
             return None, result.text
         log.info("thought: %s", decision.thought)
+        said = self.conversation.grounded(decision.customer_said)
+        if len(said) < len(decision.customer_said):
+            dropped = set(decision.customer_said) - set(said)
+            log.info("dropped notes not from this conversation: %s", ", ".join(sorted(dropped)))
+        if said:
+            self.conversation.customer_said = said
         self.conversation.add_model(decision.to_json())
         return decision, result.text
 
@@ -192,10 +250,37 @@ class Agent:
         prompt = CONFIRM_QUESTION.format(question=question, answer=answer)
         return self._classify(prompt, f"confirmation {answer!r}")
 
+    def _is_new_customer(self, answer: str) -> bool:
+        """Did the speaker say yes to the question whether they are a new customer?"""
+        assert self.last_reply is not None
+        return self._customer_agreed(self.last_reply.message, answer)
+
+    def _start_new_customer(self) -> None:
+        """The speaker is a new customer: clear the kiosk's order and the conversation."""
+        home = self._discard_button(self._settle())
+        if home is not None:
+            # The customer confirmed, so the order-discarding button may be pressed here. It is
+            # pressed whenever it is shown: the kiosk's start screen does not have one.
+            log.info("new customer: pressing %s", home.label)
+            self.output.show_elements([home])
+            self.screen.invoke(home)
+        log.info("new customer (confirmed by the speaker): starting a new conversation")
+        self.reset()
+
+    def _discard_button(self, snapshot: Snapshot) -> Element | None:
+        """The enabled button that throws the whole order away (e.g. "처음으로"), if shown."""
+        return next(
+            (
+                e
+                for e in snapshot.elements
+                if e.ref is not None and not e.is_region and self.gate.discards_order(e)
+            ),
+            None,
+        )
+
     def _customer_wants_to_pay(self) -> bool:
         """Has the customer asked to pay, without changing the order since?"""
-        recent = self.conversation.customer_messages(PAYMENT_CONTEXT_MESSAGES)
-        lines = "\n".join(f"{i}. {m}" for i, m in enumerate(recent, start=1))
+        lines = "\n".join(self.conversation.dialogue(PAYMENT_CONTEXT_MESSAGES))
         return self._classify(PAYMENT_QUESTION.format(messages=lines), "payment request")
 
     def _classify(self, prompt: str, what: str) -> bool:

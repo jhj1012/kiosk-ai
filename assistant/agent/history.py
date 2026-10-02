@@ -10,6 +10,7 @@ the stored history a stable prefix, which the API can reuse between requests (pr
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from assistant.llm.client import Message
@@ -29,10 +30,14 @@ class Conversation:
         self.max_turns = max_turns
         self._turns: list[_Turn] = []
         self._paid_in: _Turn | None = None  # the turn in which the last payment was made
+        # What this customer has decided so far, as the model last listed it. Shown with every
+        # request, because finished turns are condensed and their notes are not sent again.
+        self.customer_said: tuple[str, ...] = ()
 
     def clear(self) -> None:
         self._turns.clear()
         self._paid_in = None
+        self.customer_said = ()
 
     @property
     def is_empty(self) -> bool:
@@ -65,6 +70,9 @@ class Conversation:
         """Messages for one request: system prompt, history, then the current screen."""
         messages: list[Message] = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.messages)
+        if self.customer_said:
+            known = "; ".join(self.customer_said)
+            messages.append({"role": "user", "content": f"THE CUSTOMER ALREADY DECIDED: {known}"})
         if extra_note:
             messages.append({"role": "user", "content": extra_note})
         messages.append({"role": "user", "content": screen_message(screen_text)})
@@ -82,14 +90,41 @@ class Conversation:
                 messages.extend(turn.steps)
         return messages
 
-    def customer_messages(self, last: int) -> list[str]:
-        """The customer's latest messages since the last payment, oldest first."""
+    def grounded(self, entries: tuple[str, ...]) -> tuple[str, ...]:
+        """The entries that really come from this conversation.
+
+        An entry is kept if one of its words (two letters or more, no digits) appears in what
+        the customer said or what the assistant replied. In a live test the model filled its
+        notes with the prompt's made-up burger example ("치즈버거 세트 2개").
+        """
+        spoken = " ".join(
+            [t.customer for t in self._turns]
+            + [json.loads(t.reply).get("message", "") for t in self._turns if t.reply is not None]
+        )
+        kept = []
+        for entry in entries:
+            words = [
+                w for w in re.split(r"[^\w]+", entry) if len(w) >= 2 and not re.search(r"\d", w)
+            ]
+            if any(w in spoken for w in words):
+                kept.append(entry)
+        return tuple(kept)
+
+    def dialogue(self, last: int) -> list[str]:
+        """The latest exchanges since the last payment, oldest first: "Customer: ..." and
+        "Assistant: ..." lines. A bare "네" only means something next to the question it answers.
+        """
         turns = self._turns
         for i, turn in enumerate(turns):
             if turn is self._paid_in:  # identity: equal-looking turns are different turns
                 turns = turns[i + 1 :]
                 break
-        return [t.customer for t in turns[-last:]]
+        lines = []
+        for turn in turns[-last:]:
+            lines.append(f"Customer: {turn.customer}")
+            if turn.reply is not None:
+                lines.append(f"Assistant: {json.loads(turn.reply).get('message', '')}")
+        return lines
 
     def _current(self) -> _Turn:
         if not self._turns:

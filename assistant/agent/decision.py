@@ -40,6 +40,7 @@ class Decision:
     thought: str
     actions: tuple[ActionRequest, ...] = ()
     reply: Reply | None = None
+    customer_said: tuple[str, ...] = ()  # what the customer has decided so far (model's notes)
     read_back: str = ""  # with "act": order and total, shown when the pay button is pressed
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -58,8 +59,9 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         raise DecisionError("Your answer must be a JSON object.")
     thought = " | ".join(str(data[k]) for k in ("screen", "todo", "thought") if data.get(k))
     next_step = data.get("next")
+    said = tuple(_strings(data.get("customer_said")))
     if next_step == "reply":
-        return Decision(thought, reply=_parse_reply(data, snapshot), raw=data)
+        return Decision(thought, reply=_parse_reply(data, snapshot), customer_said=said, raw=data)
     if next_step == "act":
         actions = data.get("actions")
         if not isinstance(actions, list) or not actions:
@@ -75,7 +77,7 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         to_ask = [
             m
             for m in _strings(data.get("need_to_ask"))
-            if _on_screen(m, snapshot) and not _answered(m, selected)
+            if _on_screen(m, snapshot) and not _answered(m, selected) and not _answered(m, said)
         ]
         if to_ask and not all(_is_choice(a, snapshot) for a in parsed):
             # Pressing on (add to cart, next, ...) while a required choice is open would
@@ -86,7 +88,7 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
                 'customer already told you, remove it from "need_to_ask".'
             )
         read_back = clean_message(str(data.get("message") or ""))
-        return Decision(thought, actions=parsed, read_back=read_back, raw=data)
+        return Decision(thought, actions=parsed, customer_said=said, read_back=read_back, raw=data)
     raise DecisionError('"next" must be "act" or "reply".')
 
 
