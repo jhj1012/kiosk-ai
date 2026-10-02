@@ -3,8 +3,8 @@
 Only the latest screen is ever in the context: it is added as the last message of each
 request and never stored. Finished turns are condensed to what the customer said and what the
 assistant answered; the actions and results in between are kept only for the current turn.
-This keeps the prompt short (a 14B model degrades badly near its context size) and keeps the
-stored history a stable prefix that Ollama can reuse between requests (prompt caching).
+This keeps the prompt short and cheap (long contexts made answers worse in tests) and keeps
+the stored history a stable prefix, which the API can reuse between requests (prompt caching).
 """
 
 from __future__ import annotations

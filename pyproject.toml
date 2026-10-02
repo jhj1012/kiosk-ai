@@ -11,13 +11,12 @@ kiosk = [
     "PySide6>=6.7",
 ]
 assistant = [
-    "faster-whisper>=1.1",
-    "ollama>=0.4",
     "pyttsx3>=2.98",
     "pywinauto>=0.6.9",
     "sounddevice>=0.5",
     "numpy>=1.26",
     "pyyaml>=6.0",
+    "google-genai>=2.27.0",
 ]
 dev = [
     "ruff>=0.6",

@@ -17,8 +17,8 @@ from pathlib import Path
 
 from assistant.agent.loop import Agent
 from assistant.agent.session import run_session
-from assistant.config import Config, ConfigError, load_config
-from assistant.llm.client import LlmError, OllamaChatModel
+from assistant.config import Config, ConfigError, load_config, load_env_file
+from assistant.llm.client import GeminiChatModel, LlmError
 from assistant.screen.base import WindowNotFoundError
 from assistant.screen.uia import UiaScreen
 from assistant.userio.console import ConsoleInput, ConsoleOutput
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--debug", action="store_true", help="print screens, model answers and actions"
     )
-    parser.add_argument("--model", help="Ollama model to use instead of configs/models.yaml")
+    parser.add_argument("--model", help="Gemini model to use instead of configs/models.yaml")
     args = parser.parse_args(argv)
     _utf8_console()
 
@@ -44,14 +44,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.model:
         config = replace(config, llm=replace(config.llm, model=args.model))
     log_path = _setup_logging(args.debug)
+    loaded = load_env_file()
+    if loaded:
+        log.info("loaded from .env: %s", ", ".join(loaded))
     log.info("model %s, window %r", config.llm.model, config.screen.window_title)
     print(f"모델: {config.llm.model} | 창: {config.screen.window_title} | 로그: {log_path}")
 
     try:
-        llm = OllamaChatModel(config.llm)
+        llm = GeminiChatModel(config.llm)
         llm.check_ready()
-        print("모델을 불러오는 중...", flush=True)
-        llm.warm_up()
     except LlmError as e:
         print(f"LLM error: {e}", file=sys.stderr)
         return 1
@@ -70,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if failed.is_set() else 0
 
 
-def _run_agent(config: Config, llm: OllamaChatModel, debug: bool, failed: threading.Event) -> None:
+def _run_agent(config: Config, llm: GeminiChatModel, debug: bool, failed: threading.Event) -> None:
     """Agent thread: owns the UIA (COM) objects from attach to exit."""
     output = ConsoleOutput(show_states=debug)
     try:
@@ -101,7 +102,7 @@ def _setup_logging(debug: bool) -> Path:
         console.setFormatter(logging.Formatter("    | %(message)s"))
         console.setLevel(logging.DEBUG)
         log.addHandler(console)  # only the assistant's own loggers on screen
-    for noisy in ("httpx", "httpcore", "comtypes"):
+    for noisy in ("httpx", "httpcore", "comtypes", "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     return path
 

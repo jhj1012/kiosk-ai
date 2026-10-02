@@ -2,17 +2,23 @@
 
 Each file may have a git-ignored `*.local.yaml` sibling (e.g. `models.local.yaml`) whose
 values are merged on top, so a teammate can change the model without touching shared files.
+Secrets (the Gemini API key) come from environment variables, or from a git-ignored `.env`
+file in the repository root.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_DIR = REPO_ROOT / "configs"
+ENV_FILE = REPO_ROOT / ".env"
+VALID_THINKING_LEVELS = ("minimal", "low", "medium", "high")
 
 
 class ConfigError(Exception):
@@ -22,13 +28,12 @@ class ConfigError(Exception):
 @dataclass(frozen=True)
 class LlmConfig:
     model: str
-    provider: str = "ollama"
-    host: str = "http://localhost:11434"
-    temperature: float = 0.0
-    num_ctx: int = 8192
-    num_predict: int = 400
-    keep_alive: str = "30m"
-    timeout_s: float = 120.0
+    provider: str = "gemini"
+    api_key_env: str = "GEMINI_API_KEY"  # environment variable that holds the API key
+    thinking_level: str = "low"
+    temperature: float = 1.0
+    max_output_tokens: int = 2048  # includes thinking tokens; stops runaway answers
+    timeout_s: float = 60.0
 
 
 @dataclass(frozen=True)
@@ -79,8 +84,12 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     settings = load_yaml(config_dir / "settings.yaml")
 
     llm = _build(LlmConfig, models.get("llm", {}), "models.yaml: llm")
-    if llm.provider != "ollama":
-        raise ConfigError(f"models.yaml: llm.provider {llm.provider!r} is not supported (ollama)")
+    if llm.provider != "gemini":
+        raise ConfigError(f"models.yaml: llm.provider {llm.provider!r} is not supported (gemini)")
+    if llm.thinking_level not in VALID_THINKING_LEVELS:
+        raise ConfigError(
+            f"models.yaml: llm.thinking_level must be one of {', '.join(VALID_THINKING_LEVELS)}"
+        )
     screen_values = {
         "window_title": settings.get("target_window", {}).get("title"),
         **settings.get("screen", {}),
@@ -90,6 +99,28 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     if agent.max_steps_per_request < 1:
         raise ConfigError("settings.yaml: agent.max_steps_per_request must be at least 1")
     return Config(llm=llm, screen=screen, agent=agent)
+
+
+def load_env_file(path: Path = ENV_FILE) -> list[str]:
+    """Set environment variables from `KEY=value` lines in `path`, if the file exists.
+
+    Variables that are already set win. Returns the names that were set (never the values).
+    """
+    if not path.exists():
+        return []
+    loaded = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = (part.strip() for part in line.split("=", 1))
+        key = key.removeprefix("export ").strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

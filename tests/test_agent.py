@@ -1,4 +1,4 @@
-"""Agent loop tests with a fake screen and a scripted LLM (no Ollama, no Windows)."""
+"""Agent loop tests with a fake screen and a scripted LLM (no Gemini API, no Windows)."""
 
 from __future__ import annotations
 
@@ -116,8 +116,7 @@ def test_step_limit_ends_with_one_reply_from_reply_only_schema() -> None:
     agent.handle("계속 눌러 주세요")
     assert len(llm.requests) == 4
     final_messages, final_schema = llm.requests[3]
-    assert "anyOf" not in final_schema  # reply only
-    assert final_schema["properties"]["next"] == {"const": "reply"}
+    assert final_schema["properties"]["next"]["enum"] == ["reply"]  # reply only
     assert any(m["content"] == OUT_OF_STEPS for m in final_messages)
     assert output.messages == [("say", "세 번 눌렀지만 끝나지 않았어요.")]
 
@@ -130,7 +129,7 @@ def test_repeating_a_failed_batch_ends_the_turn_early() -> None:
     agent, output = make_agent(screen, llm, max_steps_per_request=10)
     agent.handle("결제")
     assert len(llm.requests) == 3  # second identical batch is not run; then the final reply
-    assert "anyOf" not in llm.requests[2][1]
+    assert llm.requests[2][1]["properties"]["next"]["enum"] == ["reply"]
     assert output.messages == [("say", "결제 전에 주문을 확인할게요.")]
 
 

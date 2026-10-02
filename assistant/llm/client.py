@@ -1,12 +1,13 @@
-"""Chat model interface and the Ollama implementation.
+"""Chat model interface and the Gemini API implementation.
 
-Answers are requested as JSON constrained by a schema (Ollama structured outputs), so they
-always parse and element numbers can be limited to the ones on the current screen.
+Answers are requested as JSON constrained by a schema (Gemini structured output), so they
+always parse and targets can be limited to the controls on the current screen.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -15,7 +16,10 @@ from assistant.config import LlmConfig
 
 log = logging.getLogger(__name__)
 
-Message = dict[str, str]
+Message = dict[str, str]  # {"role": "system" | "user" | "assistant", "content": text}
+
+RETRY_CODES = {429, 500, 502, 503, 504}  # rate limit and temporary server errors
+RETRY_DELAYS_S = (1.0, 3.0)
 
 
 class LlmError(Exception):
@@ -28,7 +32,7 @@ class ChatResult:
     seconds: float = 0.0
     prompt_tokens: int = 0
     output_tokens: int = 0
-    done_reason: str = ""  # "stop", or "length" if num_predict cut the answer off
+    finish_reason: str = ""  # "STOP", or "MAX_TOKENS" if the answer was cut off
 
 
 class ChatModel(Protocol):
@@ -37,67 +41,101 @@ class ChatModel(Protocol):
         ...
 
 
-class OllamaChatModel:
-    def __init__(self, config: LlmConfig) -> None:
-        import ollama  # imported here so tests and CI do not need the package
+def to_gemini(messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
+    """Split messages into Gemini's system instruction and contents.
 
+    Gemini calls the assistant role "model". Consecutive messages of the same role (e.g. a
+    customer message followed by the screen) are joined into one turn.
+    """
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    contents: list[dict[str, Any]] = []
+    for m in messages:
+        if m["role"] == "system":
+            continue
+        role = "model" if m["role"] == "assistant" else "user"
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].append({"text": m["content"]})
+        else:
+            contents.append({"role": role, "parts": [{"text": m["content"]}]})
+    return system, contents
+
+
+class GeminiChatModel:
+    def __init__(self, config: LlmConfig, client: Any = None) -> None:
+        """`client` is for tests; normally a google-genai client is created here."""
         self.config = config
-        self._ollama = ollama
-        self._client = ollama.Client(host=config.host, timeout=config.timeout_s)
+        if client is None:
+            api_key = os.environ.get(config.api_key_env, "").strip()
+            if not api_key:
+                raise LlmError(
+                    f"No Gemini API key: set {config.api_key_env} in your environment or in "
+                    "the .env file (see docs/setup.md)."
+                )
+            from google import genai  # imported here so tests and CI do not need the package
+
+            client = genai.Client(
+                api_key=api_key, http_options={"timeout": int(config.timeout_s * 1000)}
+            )
+        self._client = client
 
     def check_ready(self) -> None:
-        """Fail early with a clear message if Ollama is down or the model is not pulled."""
-        model = self.config.model
+        """Fail early with a clear message if the key or the model name is wrong."""
         try:
-            names = {m.model for m in self._client.list().models}
-        except Exception as e:  # connection refused, timeout, ...
-            raise LlmError(
-                f"Ollama is not reachable at {self.config.host} ({e}). "
-                "Start Ollama (tray app or `ollama serve`)."
-            ) from e
-        if model not in names:
-            raise LlmError(f"Model {model!r} is not pulled. Run: ollama pull {model}")
-
-    def warm_up(self) -> None:
-        """Load the model into memory now, so the first request is not slow."""
-        try:
-            self._client.generate(model=self.config.model, prompt="", keep_alive=self._keep_alive)
+            self._client.models.get(model=self.config.model)
         except Exception as e:
-            raise LlmError(f"Could not load {self.config.model}: {e}") from e
+            code = getattr(e, "code", None)
+            hint = {
+                400: "the API key looks invalid",
+                401: "the API key is invalid",
+                403: "the API key has no access to this model",
+                404: f"model {self.config.model!r} does not exist",
+            }.get(code, "check your internet connection")
+            raise LlmError(f"Gemini API check failed ({hint}): {e}") from e
 
     def chat_json(self, messages: list[Message], schema: dict[str, Any]) -> ChatResult:
+        system, contents = to_gemini(messages)
+        config = {
+            "system_instruction": system or None,
+            "temperature": self.config.temperature,
+            "max_output_tokens": self.config.max_output_tokens,
+            "response_mime_type": "application/json",
+            "response_json_schema": schema,
+            "thinking_config": {"thinking_level": self.config.thinking_level.upper()},
+        }
         start = time.monotonic()
-        try:
-            response = self._client.chat(
-                model=self.config.model,
-                messages=messages,
-                format=schema,
-                options={
-                    "temperature": self.config.temperature,
-                    "num_ctx": self.config.num_ctx,
-                    "num_predict": self.config.num_predict,
-                },
-                keep_alive=self._keep_alive,
-            )
-        except Exception as e:  # ollama.ResponseError, connection errors, timeouts
-            raise LlmError(f"Ollama request failed: {e}") from e
+        response = self._generate(contents, config)
+        usage = getattr(response, "usage_metadata", None)
+        candidates = getattr(response, "candidates", None) or []
+        finish = getattr(candidates[0], "finish_reason", "") if candidates else ""
         result = ChatResult(
-            text=response.message.content or "",
+            text=response.text or "",
             seconds=time.monotonic() - start,
-            prompt_tokens=response.prompt_eval_count or 0,
-            output_tokens=response.eval_count or 0,
-            done_reason=response.done_reason or "",
+            prompt_tokens=getattr(usage, "prompt_token_count", 0) or 0,
+            output_tokens=getattr(usage, "candidates_token_count", 0) or 0,
+            finish_reason=str(getattr(finish, "name", finish) or ""),
         )
         log.info(
-            "llm %.1fs, prompt %d tokens, output %d tokens (%s)",
+            "llm %.1fs, prompt %d tokens, output %d tokens, thinking %d tokens (%s)",
             result.seconds,
             result.prompt_tokens,
             result.output_tokens,
-            result.done_reason,
+            getattr(usage, "thoughts_token_count", 0) or 0,
+            result.finish_reason,
         )
         return result
 
-    @property
-    def _keep_alive(self) -> str | float:
-        value = self.config.keep_alive
-        return float(value) if isinstance(value, int | float) else value
+    def _generate(self, contents: list[dict[str, Any]], config: dict[str, Any]) -> Any:
+        """Call the API, retrying rate limits and temporary server errors."""
+        for attempt in range(len(RETRY_DELAYS_S) + 1):
+            try:
+                return self._client.models.generate_content(
+                    model=self.config.model, contents=contents, config=config
+                )
+            except Exception as e:  # google.genai.errors.APIError, network errors, timeouts
+                code = getattr(e, "code", None)
+                if code in RETRY_CODES and attempt < len(RETRY_DELAYS_S):
+                    log.warning("Gemini API error %s, retrying: %s", code, e)
+                    time.sleep(RETRY_DELAYS_S[attempt])
+                    continue
+                raise LlmError(f"Gemini API request failed: {e}") from e
+        raise AssertionError("unreachable")
