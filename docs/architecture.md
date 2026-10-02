@@ -43,3 +43,15 @@ Risky steps (payment) require spoken confirmation from the user.
 So that the assistant can find elements reliably, every interactive widget in `kiosk_app`
 must have a meaningful `accessibleName` (and `objectName`). Real-world kiosks may not,
 which is why a vision fallback may be added later.
+
+### Lessons from the test kiosk (verified with pywinauto)
+
+- Widgets placed inside list items with `QListWidget.setItemWidget()` are **not** in the UIA
+  tree. The cart therefore uses plain row widgets in a `QScrollArea`.
+- Checkable `QPushButton`s (category tabs, options, payment methods) appear as `CheckBox`
+  with a Toggle pattern. A UIA `toggle()` does not emit `clicked`, so the kiosk reacts to
+  `toggled`. Checked buttons also add " (선택됨)" to their name.
+- Option selection is a page inside the main window, not a separate `QDialog`, so everything
+  stays under the "Test Kiosk" window.
+- A window on another Windows virtual desktop is "cloaked" and cannot be found through UIA.
+- `uv run python scripts/dump_uia_tree.py [--full | --check]` prints what the assistant sees.
