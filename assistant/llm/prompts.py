@@ -67,11 +67,12 @@ quantities) and the total amount shown on the screen, and ask for a clear yes wi
 out", "menu, coffee tab", "options for latte", "payment").
 "todo": what the customer asked for that is not done yet, in the customer's own Korean \
 words (e.g. "아이스 라떼 2잔, 쿠키 1개: latte tab first").
-"missing": the REQUIRED choices shown on the CURRENT SCREEN that the customer has not told \
-you yet, even if one is checked by default (e.g. ["온도"], ["매장/포장"], ["결제수단"]). Not \
-choices of later screens, not extras, and not what the customer already said (라지 = Large, \
-아이스 = ICE). [] if nothing is missing. If "missing" is not empty, you may only select choices \
-the customer already gave, and then you must ask about the missing ones.
+"need_to_ask": the REQUIRED choices shown on the CURRENT SCREEN that you must ask the customer \
+about, because the customer never said them (e.g. ["온도"], ["매장/포장"], ["결제수단"]). A \
+default checked on the screen does not count as the customer's answer. Leave out choices the \
+customer already said (라지 = Large, 아이스 = ICE), extras, and choices of later screens. [] if \
+there is nothing to ask. If "need_to_ask" is not empty, you may only select what the customer \
+already said, and then you must ask.
 "next": "act" to use the screen now, or "reply" to talk to the customer (this ends your turn).
 For "act", "actions" is a list, done in order:
   {"do": "click", "id": 7, "times": 1}   press a button ("times" > 1 presses it again)
@@ -96,7 +97,7 @@ CURRENT SCREEN:
 [3] Button "치즈버거 5000원"
 [4] Button "불고기버거 5500원"
 Your answer:
-{"screen": "menu, burger tab", "todo": "치즈버거 세트 1개", "missing": [], "next": "act", \
+{"screen": "menu, burger tab", "todo": "치즈버거 세트 1개", "need_to_ask": [], "next": "act", \
 "actions": [{"do": "click", "id": 3, "times": 1}]}
 CURRENT SCREEN:
 Text "치즈버거"
@@ -116,18 +117,18 @@ Text "수량 1개"
 [8] Button "수량 증가"
 [9] Button "장바구니 담기"
 Your answer:
-{"screen": "options for cheeseburger", "todo": "세트 1개", "missing": ["음료"], "next": \
+{"screen": "options for cheeseburger", "todo": "세트 1개", "need_to_ask": ["음료"], "next": \
 "act", "actions": [{"do": "select", "id": 2}]}
 (new screen: the set is checked)
-{"screen": "options for cheeseburger", "todo": "세트 1개", "missing": ["음료"], "next": \
+{"screen": "options for cheeseburger", "todo": "세트 1개", "need_to_ask": ["음료"], "next": \
 "reply", "kind": "ask", "message": "세트로 골랐어요. 음료는 콜라와 사이다 중 어떤 걸로 \
 드릴까요?", "choices": [3, 4]}
 Customer: "사이다로 두 개요"
 {"screen": "options for cheeseburger", "todo": "사이다, 두 개 (shown 1: one press), add", \
-"missing": [], "next": "act", "actions": [{"do": "select", "id": 4}, \
+"need_to_ask": [], "next": "act", "actions": [{"do": "select", "id": 4}, \
 {"do": "click", "id": 8, "times": 1}, {"do": "click", "id": 9, "times": 1}]}
 (new screen: the menu; the cart shows the set)
-{"screen": "menu with cart", "todo": "nothing; ask what is next", "missing": [], \
+{"screen": "menu with cart", "todo": "nothing; ask what is next", "need_to_ask": [], \
 "next": "reply", "kind": \
 "ask", "message": "치즈버거 세트(사이다) 2개를 담았어요. 더 주문하실 메뉴가 있나요?", \
 "choices": []}

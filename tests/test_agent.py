@@ -256,3 +256,11 @@ def test_session_greets_handles_commands_and_ends() -> None:
     # After /reset the first turn is forgotten.
     assert 'Customer: "안녕"' in [m["content"] for m in llm.requests[1][0]]
     assert len([m for m in llm.requests[1][0] if m["content"].startswith("Customer")]) == 1
+
+
+def test_repeating_an_invalid_answer_ends_the_turn_early() -> None:
+    llm = FakeLlm(act(click(99)), act(click(99)), reply("다시 말씀해 주시겠어요?", kind="tell"))
+    agent, output = make_agent(start_and_options(), llm, max_steps_per_request=10)
+    agent.handle("주문")
+    assert len(llm.requests) == 3
+    assert output.messages == [("say", "다시 말씀해 주시겠어요?")]

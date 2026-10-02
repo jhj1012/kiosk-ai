@@ -109,7 +109,7 @@ def test_decision_schema_limits_numbers_to_the_screen() -> None:
     assert by_do['{"const": "scroll"}']["id"]["enum"] == [1]
     assert "id" not in by_do['{"const": "type_text"}']  # no edit field: keypad typing
     assert reply["properties"]["choices"]["items"]["enum"] == [2, 3, 4, 5]
-    assert act["required"] == ["screen", "todo", "missing", "next", "actions"]
+    assert act["required"] == ["screen", "todo", "need_to_ask", "next", "actions"]
 
 
 def test_schema_variants_follow_the_screen() -> None:
@@ -144,22 +144,36 @@ def test_conversation_trims_whole_old_turns() -> None:
 
 def test_open_required_choices_only_allow_selecting() -> None:
     def answer(*actions: dict) -> object:
-        return {"next": "act", "missing": ["옵션"], "actions": list(actions)}
+        return {"next": "act", "need_to_ask": ["옵션"], "actions": list(actions)}
 
     # [5] 담기 would decide the open choice with the screen's default
-    with pytest.raises(DecisionError, match="missing choices"):
+    with pytest.raises(DecisionError, match="need to ask"):
         parse(answer({"do": "select", "id": 3}, {"do": "click", "id": 5, "times": 1}))
     assert len(parse(answer({"do": "select", "id": 3})).actions) == 1
     assert len(parse(answer({"do": "click", "id": 3, "times": 1})).actions) == 1  # a check box
-    no_missing = {"next": "act", "missing": [], "actions": [{"do": "click", "id": 5, "times": 1}]}
+    click_add = [{"do": "click", "id": 5, "times": 1}]
+    no_missing = {"next": "act", "need_to_ask": [], "actions": click_add}
     assert parse(no_missing).actions[0].ref == 5
 
 
 def test_missing_choices_not_on_the_screen_do_not_block() -> None:
     # The model sometimes lists a choice of a later screen (size, while on the menu).
     menu = snapshot(text("메뉴"), button("카페라떼 4500원"))
-    answer = {"next": "act", "missing": ["사이즈"], "actions": [{"do": "click", "id": 1}]}
+    answer = {"next": "act", "need_to_ask": ["사이즈"], "actions": [{"do": "click", "id": 1}]}
     assert parse_decision(json.dumps(answer, ensure_ascii=False), menu).actions[0].ref == 1
     options = snapshot(text("사이즈 선택"), check("Regular", on=True), button("담기"))
     with pytest.raises(DecisionError):
         parse_decision(json.dumps({**answer, "actions": [{"do": "click", "id": 2}]}), options)
+
+
+def test_choice_selected_in_the_same_answer_counts_as_answered() -> None:
+    options = snapshot(
+        text("사이즈 선택"), check("사이즈 Regular", on=True), check("사이즈 Large"), button("담기")
+    )
+    answer = {
+        "next": "act",
+        "need_to_ask": ["사이즈"],
+        "actions": [{"do": "select", "id": 2}, {"do": "click", "id": 3, "times": 1}],
+    }
+    decision = parse_decision(json.dumps(answer, ensure_ascii=False), options)
+    assert [a.ref for a in decision.actions] == [2, 3]

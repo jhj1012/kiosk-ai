@@ -64,13 +64,25 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         if not isinstance(actions, list) or not actions:
             raise DecisionError('"act" needs at least one action.')
         parsed = tuple(_parse_action(a, snapshot) for a in actions)
-        missing = [m for m in _strings(data.get("missing")) if _on_screen(m, snapshot)]
-        if missing and not all(_is_choice(a, snapshot) for a in parsed):
+        selected = [
+            e.name
+            for a in parsed
+            if a.do in ("select", "click") and a.ref is not None
+            for e in [snapshot.by_ref(a.ref)]
+            if e is not None and e.is_toggleable
+        ]
+        to_ask = [
+            m
+            for m in _strings(data.get("need_to_ask"))
+            if _on_screen(m, snapshot) and not _answered(m, selected)
+        ]
+        if to_ask and not all(_is_choice(a, snapshot) for a in parsed):
             # Pressing on (add to cart, next, ...) while a required choice is open would
             # decide it for the customer with the screen's default.
             raise DecisionError(
-                f"You listed missing choices ({', '.join(missing)}). Do not press anything else "
-                "yet: only select what the customer already told you, then ask about the rest."
+                f"You said you need to ask the customer about {', '.join(to_ask)}. Then do not "
+                "press anything else: select only what the customer told you, then ask. If the "
+                'customer already told you, remove it from "need_to_ask".'
             )
         return Decision(thought, actions=parsed, raw=data)
     raise DecisionError('"next" must be "act" or "reply".')
@@ -126,13 +138,24 @@ def _strings(value: Any) -> list[str]:
     return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
 
 
+def _words(choice: str) -> list[str]:
+    return [w for w in re.split(r"[\s/,()]+", choice) if len(w) >= 2]
+
+
 def _on_screen(choice: str, snapshot: Snapshot) -> bool:
     """True if a word of `choice` (e.g. "사이즈" of "사이즈/크기") appears on the screen.
 
     Only those entries are enforced: the model sometimes lists choices of a later screen.
     """
-    words = [w for w in re.split(r"[\s/,()]+", choice) if len(w) >= 2]
-    return any(w in e.name for w in words for e in snapshot.elements)
+    return any(w in e.name for w in _words(choice) for e in snapshot.elements)
+
+
+def _answered(choice: str, selected_names: list[str]) -> bool:
+    """True if the same answer selects an option of this choice ("사이즈 Large" for "사이즈").
+
+    The model sometimes lists a choice it is answering right now from the customer's words.
+    """
+    return any(w in name for w in _words(choice) for name in selected_names)
 
 
 def _is_choice(action: ActionRequest, snapshot: Snapshot) -> bool:

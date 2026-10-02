@@ -87,29 +87,36 @@ class Agent:
         self.gate.start_turn(confirm_check)
         self.conversation.add_customer(text)
 
-        failed: tuple[object, ...] | None = None  # actions + screen of the last failed batch
+        # The last thing that went wrong: an invalid answer, or failed actions on a screen.
+        # At temperature 0 the model often repeats it exactly; then it is stuck.
+        last_failure: object = None
         for step in range(1, self.config.max_steps_per_request + 1):
-            decision = self._decide(snapshot, step)
+            decision, answer = self._decide(snapshot, step)
             if decision is None:
-                continue  # unusable answer; the error was noted for the model
+                if answer == last_failure:
+                    log.warning("model repeated an invalid answer; ending the turn")
+                    break
+                last_failure = answer
+                continue  # the error was noted for the model
             if decision.reply is not None:
                 return decision.reply, snapshot
-            if failed == (decision.actions, snapshot.signature()):
-                # Same failing actions on the same screen again: the model is stuck.
+            attempt = (decision.actions, snapshot.signature())
+            if attempt == last_failure:
                 log.warning("model repeated failed actions; ending the turn")
                 break
             self.output.set_state(AssistantState.ACTING)
             self.output.show_elements(self._targets(decision, snapshot))
             execution = self.executor.run(decision.actions, snapshot)
             self.conversation.add_note(execution.report())
-            failed = (decision.actions, snapshot.signature()) if execution.failed else None
+            last_failure = attempt if execution.failed else None
             snapshot = execution.snapshot
             self.output.set_state(AssistantState.THINKING)
         else:
             log.warning("step limit (%d) reached", self.config.max_steps_per_request)
         return self._final_reply(snapshot), snapshot
 
-    def _decide(self, snapshot: Snapshot, step: int) -> Decision | None:
+    def _decide(self, snapshot: Snapshot, step: int) -> tuple[Decision | None, str]:
+        """Ask the model for the next step. Returns (None, answer) if the answer is unusable."""
         screen_text = format_snapshot(snapshot)
         log.debug("screen (step %d):\n%s", step, screen_text)
         result = self.llm.chat_json(self.conversation.build(screen_text), decision_schema(snapshot))
@@ -120,10 +127,10 @@ class Agent:
             log.info("invalid answer: %s", e)
             self.conversation.add_model(result.text[:500])
             self.conversation.add_note(f"ERROR: {e} Answer again.")
-            return None
+            return None, result.text
         log.info("thought: %s", decision.thought)
         self.conversation.add_model(decision.to_json())
-        return decision
+        return decision, result.text
 
     def _final_reply(self, snapshot: Snapshot) -> Reply:
         messages = self.conversation.build(format_snapshot(snapshot), extra_note=OUT_OF_STEPS)
