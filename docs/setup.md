@@ -55,7 +55,21 @@ On your machine, set `llm.host` in `models.local.yaml` to `http://<that-ip>:1143
 
 ## 5. Run
 
+Start the kiosk first, then the assistant in a second terminal, on the same virtual desktop:
+
 ```powershell
 uv run python -m kiosk_app
-uv run python -m assistant
+uv run python -m assistant            # type Korean at the "나>" prompt
+uv run python -m assistant --debug    # also print each screen, model answer and action
 ```
+
+The text agent works much better with the 14B model. If your GPU has room for it (~10 GB),
+create `configs/models.local.yaml`:
+
+```yaml
+llm:
+  model: qwen2.5:14b-instruct-q4_K_M
+```
+
+(`ollama pull qwen2.5:14b-instruct-q4_K_M` first.) Every session writes a log to `logs/`.
+Commands: `/reset` starts a new conversation, `/quit` exits.

@@ -1,1 +1,1 @@
-"""Ollama client, prompts, and tool definitions."""
+"""Ollama client, system prompt, and the JSON schemas for the model's answers."""

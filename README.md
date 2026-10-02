@@ -19,8 +19,8 @@ what is on the screen, through the Windows UI Automation (accessibility) tree.
 | # | Phase | Status |
 |---|---|---|
 | 1 | Test kiosk (`kiosk_app`) + UIA dump script | ✅ Done |
-| 2 | Text-only agent: typed Korean in, kiosk operated via UIA, proactive questions | ⏳ Next |
-| 3 | Speech recognition (faster-whisper) + voice activity detection | Planned |
+| 2 | Text-only agent: typed Korean in, kiosk operated via UIA, proactive questions | ✅ Done |
+| 3 | Speech recognition (faster-whisper) + voice activity detection | ⏳ Next |
 | 4 | TTS (pyttsx3, Korean voice) | Planned |
 | 5 | Visual overlay: AI avatar, subtitles, cropped kiosk UI images, blurred kiosk background | Planned |
 
@@ -46,7 +46,7 @@ See [docs/setup.md](docs/setup.md) for the full guide.
 uv sync                                    # install Python deps (creates .venv)
 ollama pull qwen2.5:7b-instruct-q4_K_M     # download the LLM
 uv run python -m kiosk_app                 # run the test kiosk
-uv run python -m assistant                 # run the assistant
+uv run python -m assistant                 # run the assistant (type Korean; --debug shows its steps)
 ```
 
 ## Docs
