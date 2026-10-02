@@ -138,6 +138,15 @@ class Snapshot:
         """True if no control can be used, e.g. while the kiosk processes a payment."""
         return not any(e.ref is not None and not e.is_region for e in self.elements)
 
+    def controls(self) -> frozenset[tuple[int, ...] | tuple[str, str]]:
+        """Identity of every control, enabled or not, ignoring state: changes only when
+        controls appear or disappear (new page, other tab), not when one is toggled."""
+        return frozenset(
+            e.runtime_id or (e.kind, e.name)
+            for e in self.elements
+            if not e.is_region and (e.ref is not None or not e.enabled)
+        )
+
     def signature(self) -> tuple[object, ...]:
         """What must stay the same between two reads for the screen to count as settled."""
         return tuple(

@@ -59,9 +59,35 @@ def test_batch_stops_when_the_screen_changes() -> None:
     screen.on_press["아메리카노"] = lambda: setattr(screen, "page", window(check("HOT")))
     result = run(screen, ActionRequest("click", ref=1), ActionRequest("click", ref=2))
     assert screen.calls == [("invoke", "아메리카노")]
-    assert result.failed
-    assert result.lines[1].startswith('SKIPPED Button "라떼"')
+    assert not result.failed  # normal: the model continues on the new screen
+    assert result.lines[1].startswith("SKIPPED the remaining 1 action(s): the screen changed")
     assert result.snapshot.elements[0].name == "HOT"  # the model gets the new screen
+
+
+def test_batch_stops_after_a_tab_switch_even_if_the_next_target_still_exists() -> None:
+    # Planned: switch to the latte tab, then press a number guessed for a latte item. That
+    # number belongs to the checkout button, which exists on both tabs: it must not be pressed.
+    checkout = button("결제하기")
+    coffee_tab, latte_tab = check("커피", on=True), check("라떼")
+    screen = FakeScreen(window(coffee_tab, latte_tab, button("아메리카노"), checkout))
+    latte_page = window(coffee_tab, latte_tab, button("카페라떼"), checkout)
+    real_toggle = screen.toggle
+
+    def switch_tab(element):  # noqa: ANN001, ANN202
+        real_toggle(element)
+        screen.page = latte_page
+
+    screen.toggle = switch_tab
+    result = run(screen, ActionRequest("select", ref=2), ActionRequest("click", ref=4))
+    assert screen.calls == [("toggle", "라떼")]
+    assert "the screen changed" in result.lines[1]
+
+
+def test_toggling_options_does_not_count_as_a_screen_change() -> None:
+    screen = FakeScreen(window(check("ICE"), button("수량 감소", enabled=False), button("담기")))
+    result = run(screen, ActionRequest("select", ref=1), ActionRequest("click", ref=2))
+    assert screen.calls == [("toggle", "ICE"), ("invoke", "담기")]
+    assert not result.failed
 
 
 def test_later_actions_find_their_element_again_after_a_change() -> None:

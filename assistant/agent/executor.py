@@ -55,17 +55,27 @@ class Executor:
         lines: list[str] = []
         current = seen
         for index, action in enumerate(actions):
+            before = current
+            skipped = len(actions) - index - 1
             try:
                 current, line = self._run_one(action, seen, current)
             except _Stop as stop:
                 lines.append(str(stop))
-                skipped = len(actions) - index - 1
                 if skipped:
                     lines.append(f"SKIPPED the remaining {skipped} action(s).")
                 log.info("action stopped: %s", stop)
                 return Execution(self._settle(), lines, failed=True)
             lines.append(line)
             log.info("action: %s", line)
+            if skipped and current.controls() != before.controls():
+                # New page, other tab, rebuilt list: the numbers the model planned with are
+                # stale, even where an old element still exists. Let it look again.
+                lines.append(
+                    f"SKIPPED the remaining {skipped} action(s): the screen changed. Look at "
+                    "the CURRENT SCREEN and continue."
+                )
+                log.info("screen changed; skipped %d action(s)", skipped)
+                break
         return Execution(current, lines)
 
     # ----- one action -----
