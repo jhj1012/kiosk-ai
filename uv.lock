@@ -334,6 +334,7 @@ dev = [
     { name = "import-linter" },
     { name = "pre-commit" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 kiosk = [
@@ -356,6 +357,7 @@ dev = [
     { name = "import-linter", specifier = ">=2.1" },
     { name = "pre-commit", specifier = ">=3.8" },
     { name = "pytest", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.6" },
 ]
 kiosk = [{ name = "pyside6", specifier = ">=6.7" }]

@@ -8,6 +8,10 @@ llm:
   # model: qwen2.5:14b-instruct-q4_K_M   # better Korean, ~9 GB VRAM
   # model: qwen2.5:3b-instruct-q4_K_M    # weak machines
   temperature: 0.0
+  num_ctx: 8192             # context window (tokens): system prompt + history + one screen
+  num_predict: 400          # max tokens per answer; stops runaway generation
+  keep_alive: 30m           # keep the model loaded between requests
+  timeout_s: 120            # give up on one request after this many seconds
 
 stt:
   engine: faster-whisper

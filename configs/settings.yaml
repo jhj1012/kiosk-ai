@@ -1,12 +1,22 @@
 # Runtime settings for the assistant.
+# Per-machine overrides go in configs/settings.local.yaml (git-ignored).
 
 target_window:
   title: "Test Kiosk"       # window title the assistant attaches to
+
+screen:
+  settle_timeout_s: 5.0     # after an action, wait at most this long for the screen to settle
+  poll_interval_s: 0.1      # how often the screen is re-read while waiting
 
 audio:
   sample_rate: 16000
   push_to_talk_key: space
 
 agent:
-  max_steps_per_request: 10
+  max_steps_per_request: 10   # LLM calls per user message (one call can do several actions)
+  history_messages: 30        # conversation messages kept for the LLM (oldest are dropped)
   confirm_before_payment: true
+  # Buttons that finish a payment: a regex matched against the button name (case-insensitive).
+  # Pressing one is blocked until the user said yes to a read-back of the order and total.
+  # Per-kiosk configuration, like target_window.title.
+  payment_button_pattern: "^(결제|결제 요청|pay)$"
