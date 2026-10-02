@@ -262,15 +262,26 @@ def test_start_clears_a_leftover_order_and_learns_the_real_start_screen() -> Non
 
 def test_decisions_are_remembered_across_turns() -> None:
     screen = FakeScreen(window(text("결제수단"), button("카드")))
-    said = {"customer_said": ["포장", "결제수단 카드"]}
     llm = FakeLlm(
-        {**reply("카드로 결제할까요?"), **said},
-        reply("네, 결제할게요.", kind="tell"),
+        {**reply("카드로 결제할까요?"), "customer_said": ["포장"]},
+        {**reply("결제할게요.", kind="tell"), "customer_said": ["포장", "결제수단 카드"]},
+        reply("더 필요하신 게 있나요?"),
     )
     agent, _ = start_on(screen, llm)
     agent.handle("포장이요")
-    agent.handle("네")
-    contents = [m["content"] for m in llm.requests[1][0]]
+    agent.handle("네")  # "네" to the card suggestion: decided
+    agent.handle("감사합니다")
+    contents = [m["content"] for m in llm.requests[2][0]]
     assert "THE CUSTOMER ALREADY DECIDED: 포장; 결제수단 카드" in contents
     agent.reset()
     assert agent.conversation.customer_said == ()
+
+
+def test_notes_not_from_this_conversation_are_dropped() -> None:
+    """Live bug: the model copied the prompt's burger example into its notes."""
+    screen = FakeScreen(window(text("메뉴"), button("아메리카노")))
+    copied = {"customer_said": ["치즈버거 세트 2개", "음료 사이다", "포장"]}
+    llm = FakeLlm({**reply("어떤 메뉴로 드릴까요?"), **copied})
+    agent, _ = start_on(screen, llm)
+    agent.handle("포장이요")
+    assert agent.conversation.customer_said == ("포장",)

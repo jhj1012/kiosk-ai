@@ -223,8 +223,12 @@ class Agent:
             self.conversation.add_note(f"ERROR: {e} Answer again.")
             return None, result.text
         log.info("thought: %s", decision.thought)
-        if decision.customer_said:
-            self.conversation.customer_said = decision.customer_said
+        said = self.conversation.grounded(decision.customer_said)
+        if len(said) < len(decision.customer_said):
+            dropped = set(decision.customer_said) - set(said)
+            log.info("dropped notes not from this conversation: %s", ", ".join(sorted(dropped)))
+        if said:
+            self.conversation.customer_said = said
         self.conversation.add_model(decision.to_json())
         return decision, result.text
 

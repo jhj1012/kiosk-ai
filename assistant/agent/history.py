@@ -10,6 +10,7 @@ the stored history a stable prefix, which the API can reuse between requests (pr
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from assistant.llm.client import Message
@@ -88,6 +89,26 @@ class Conversation:
             else:
                 messages.extend(turn.steps)
         return messages
+
+    def grounded(self, entries: tuple[str, ...]) -> tuple[str, ...]:
+        """The entries that really come from this conversation.
+
+        An entry is kept if one of its words (two letters or more, no digits) appears in what
+        the customer said or what the assistant replied. In a live test the model filled its
+        notes with the prompt's made-up burger example ("치즈버거 세트 2개").
+        """
+        spoken = " ".join(
+            [t.customer for t in self._turns]
+            + [json.loads(t.reply).get("message", "") for t in self._turns if t.reply is not None]
+        )
+        kept = []
+        for entry in entries:
+            words = [
+                w for w in re.split(r"[^\w]+", entry) if len(w) >= 2 and not re.search(r"\d", w)
+            ]
+            if any(w in spoken for w in words):
+                kept.append(entry)
+        return tuple(kept)
 
     def dialogue(self, last: int) -> list[str]:
         """The latest exchanges since the last payment, oldest first: "Customer: ..." and
