@@ -48,6 +48,15 @@ NEW_CONVERSATION_NOTE = (
     "NOTE: The customer confirmed they are a new customer. The previous customer's order was "
     "cleared and this is a new conversation. Continue with their request."
 )
+ORDER_FINISHED_NOTE = (
+    "NOTE: The order in this conversation is already paid and finished. You may answer questions "
+    "about it, but before pressing anything for a new order, ask whether the speaker is a new "
+    'customer ("kind": "new_customer", e.g. "새로 주문하시는 손님이신가요?").'
+)
+ORDER_FINISHED_BLOCK = (
+    "BLOCKED: the order is already paid and finished, so nothing may be pressed now. Answer the "
+    'question, or ask whether the speaker is a new customer ("kind": "new_customer").'
+)
 FALLBACK_MESSAGE = "죄송해요, 요청을 끝까지 처리하지 못했어요. 다시 한 번 말씀해 주시겠어요?"
 
 
@@ -80,6 +89,9 @@ class Agent:
         )
         self.last_reply: Reply | None = None
         self._new_customer_request = ""  # message that made us ask "새로 오신 손님이신가요?"
+        # True after a payment. Once the kiosk is back on its idle screen the order is over, and
+        # the next order may be someone else's: ask before acting.
+        self._order_finished = False
 
     def start(self) -> None:
         """Call once when the assistant starts: the kiosk's current screen is its idle screen."""
@@ -90,6 +102,7 @@ class Agent:
         self.conversation.clear()
         self.last_reply = None
         self.customers.forget()
+        self._order_finished = False
 
     def handle(self, text: str) -> Reply:
         """Handle one customer message. Always ends with exactly one say() or ask()."""
@@ -102,6 +115,8 @@ class Agent:
             if asked and self._is_new_customer(text):
                 self._start_new_customer()
                 text, note = self._new_customer_request or text, NEW_CONVERSATION_NOTE
+            elif asked:
+                self._order_finished = False  # the same customer goes on (e.g. orders more)
             reply, snapshot = self._run_turn(text, note)
         except ScreenError as e:
             log.error("screen error: %s", e)
@@ -135,6 +150,8 @@ class Agent:
             self.conversation.add_note(NEW_CUSTOMER_NOTE)
         if note:
             self.conversation.add_note(note)
+        if self._order_finished and self.customers.is_idle(snapshot):
+            self.conversation.add_note(ORDER_FINISHED_NOTE)
         confirm_check = None
         if self.last_reply is not None and self.last_reply.kind == "confirm":
             confirm_check = functools.partial(self._customer_agreed, self.last_reply.message, text)
@@ -153,6 +170,15 @@ class Agent:
                 continue  # the error was noted for the model
             if decision.reply is not None:
                 return decision.reply, snapshot
+            if self._order_finished and self.customers.is_idle(snapshot):
+                # Code, not just the prompt: in a live test the model took "여보세요?" after a
+                # payment as a new order and reused the previous customer's choices.
+                log.info("blocked: order finished, new-customer question needed")
+                self.conversation.add_note(ORDER_FINISHED_BLOCK)
+                if last_failure == ORDER_FINISHED_BLOCK:
+                    break
+                last_failure = ORDER_FINISHED_BLOCK
+                continue
             attempt = (decision.actions, snapshot.signature())
             if attempt == last_failure:
                 log.warning("model repeated failed actions; ending the turn")
@@ -164,6 +190,7 @@ class Agent:
             self.conversation.add_note(execution.report())
             if self.gate.paid_with_read_back:
                 self.conversation.mark_payment()  # this request to pay is used up
+                self._order_finished = True
             last_failure = attempt if execution.failed else None
             snapshot = execution.snapshot
             self.output.set_state(AssistantState.THINKING)

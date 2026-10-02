@@ -119,7 +119,6 @@ def test_abandoned_order_is_not_silently_inherited() -> None:
 
 
 def test_a_payment_request_is_used_up_by_the_payment() -> None:
-    clock = Clock()
     screen = FakeScreen(window(text("결제할 금액 9000원"), button("결제")))
     llm = FakeLlm(
         act(click("결제"), message="총 9000원입니다."),
@@ -129,7 +128,7 @@ def test_a_payment_request_is_used_up_by_the_payment() -> None:
         {"answer": "no"},
         reply("무엇을 도와드릴까요?"),
     )
-    agent, _ = make_agent(screen, llm, clock)
+    agent, _ = start_on(screen, llm)
     agent.handle("결제해 주세요")
     agent.handle("고마워요")
     # The second payment check only sees messages after the payment.
@@ -207,3 +206,44 @@ def test_new_customer_on_the_idle_screen_needs_no_button() -> None:
     agent.handle("주문할게요")
     agent.handle("네")
     assert screen.calls == []
+
+
+def test_after_a_finished_order_nothing_is_pressed_before_asking() -> None:
+    """Live bug: "여보세요?" after a paid order started a new order with the old choices."""
+    idle = window(text("어서 오세요"), button("주문하기"))
+    screen = FakeScreen(window(text("결제할 금액 4500원"), button("결제")))
+    screen.on_press["결제"] = lambda: setattr(screen, "page", idle)  # done, back to the start
+    llm = FakeLlm(
+        act(click("결제"), message="총 4500원입니다."),
+        {"answer": "yes"},  # payment check
+        reply("주문이 완료되었어요.", kind="tell"),
+        act(click("주문하기")),  # "여보세요?": the model wants to start an order
+        reply("새로 주문하시는 손님이신가요?", kind="new_customer"),
+    )
+    agent, output = start_on(screen, llm)
+    agent.handle("결제해 주세요")
+    agent.handle("여보세요?")
+    assert ("invoke", "주문하기") not in screen.calls
+    notes = [m["content"] for m in llm.requests[4][0]]
+    assert any(n.startswith("BLOCKED: the order is already paid") for n in notes)
+    assert output.messages[-1] == ("ask", ("새로 주문하시는 손님이신가요?", []))
+
+
+def test_same_customer_may_order_again_after_saying_so() -> None:
+    idle = window(text("어서 오세요"), button("주문하기"))
+    screen = FakeScreen(window(text("결제할 금액 4500원"), button("결제")))
+    screen.on_press["결제"] = lambda: setattr(screen, "page", idle)
+    llm = FakeLlm(
+        act(click("결제"), message="총 4500원입니다."),
+        {"answer": "yes"},
+        reply("주문이 완료되었어요.", kind="tell"),
+        reply("새로 주문하시는 손님이신가요?", kind="new_customer"),
+        {"answer": "no"},  # "아니요, 저 하나 더 살게요"
+        act(click("주문하기")),
+        reply("매장에서 드시나요, 포장하시나요?"),
+    )
+    agent, _ = start_on(screen, llm)
+    agent.handle("결제해 주세요")
+    agent.handle("하나 더 주문할게요")
+    agent.handle("아니요, 저 하나 더 살게요")
+    assert ("invoke", "주문하기") in screen.calls
