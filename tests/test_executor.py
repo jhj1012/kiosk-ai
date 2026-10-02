@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import pytest
 
+from assistant.agent.confirm_gate import ConfirmationGate
 from assistant.agent.decision import ActionRequest
 from assistant.agent.executor import Executor, plan_keypad
-from assistant.agent.payment import PaymentGate
 from assistant.screen.reader import RawNode
 from tests.agent_fakes import FakeScreen
 from tests.screen_fakes import button, check, edit, snapshot, text, window
 
 
-def run(screen: FakeScreen, *actions: ActionRequest, gate: PaymentGate | None = None):
+def run(screen: FakeScreen, *actions: ActionRequest, gate: ConfirmationGate | None = None):
     executor = Executor(
-        screen, gate or PaymentGate("^결제$"), settle=screen.read, pause=lambda s: None
+        screen,
+        gate or ConfirmationGate(payment_pattern="^결제$"),
+        settle=screen.read,
+        pause=lambda s: None,
     )
     return executor.run(actions, screen.read())
 

@@ -73,3 +73,4 @@ def test_repository_configs_load() -> None:
     assert config.llm.model
     assert config.screen.window_title == "Test Kiosk"
     assert config.agent.payment_button_pattern
+    assert config.agent.discard_button_pattern

@@ -44,6 +44,7 @@ class AgentConfig:
     history_messages: int = 30
     confirm_before_payment: bool = True
     payment_button_pattern: str = r"^(결제|결제 요청|pay)$"
+    discard_button_pattern: str = ""
 
 
 @dataclass(frozen=True)

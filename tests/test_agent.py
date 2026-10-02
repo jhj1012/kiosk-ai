@@ -264,3 +264,25 @@ def test_repeating_an_invalid_answer_ends_the_turn_early() -> None:
     agent.handle("주문")
     assert len(llm.requests) == 3
     assert output.messages == [("say", "다시 말씀해 주시겠어요?")]
+
+
+def test_discard_button_needs_confirmation_too() -> None:
+    home = {"pressed": False}
+    screen = FakeScreen(window(text("옵션 선택"), button("처음으로"), button("취소")))
+    screen.on_press["처음으로"] = lambda: home.update(pressed=True)
+    llm = FakeLlm(
+        act(click(1)),  # blocked: it would throw away the order
+        act(click(2)),  # the model uses the item's cancel button instead
+        reply("메뉴 화면으로 돌아왔어요.", kind="tell"),
+        reply("주문을 모두 취소할까요?", kind="confirm"),
+        act(click(1)),
+        {"answer": "yes"},
+        reply("처음 화면으로 돌아갔어요.", kind="tell"),
+    )
+    agent, _ = make_agent(screen, llm)
+    agent.handle("이거 말고 다른 거 볼게요")
+    assert not home["pressed"]
+    assert any("throws away the whole order" in m["content"] for m in llm.requests[1][0])
+    agent.handle("처음부터 다시 할래요")
+    agent.handle("네")
+    assert home["pressed"]

@@ -12,8 +12,8 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from assistant.agent.confirm_gate import ConfirmationGate
 from assistant.agent.decision import ActionRequest
-from assistant.agent.payment import PaymentGate
 from assistant.screen.base import ActionError, Screen
 from assistant.screen.model import Element, Pattern, Snapshot
 
@@ -40,7 +40,7 @@ class Executor:
     def __init__(
         self,
         screen: Screen,
-        gate: PaymentGate,
+        gate: ConfirmationGate,
         *,
         settle: Callable[[], Snapshot],
         pause: Callable[[float], None] = time.sleep,

@@ -10,10 +10,10 @@ import functools
 import json
 import logging
 
+from assistant.agent.confirm_gate import ConfirmationGate
 from assistant.agent.decision import Decision, DecisionError, Reply, parse_decision
 from assistant.agent.executor import Executor
 from assistant.agent.history import Conversation
-from assistant.agent.payment import PaymentGate
 from assistant.config import AgentConfig, ScreenConfig
 from assistant.llm.client import ChatModel, LlmError
 from assistant.llm.prompts import CONFIRM_QUESTION, CONFIRM_SCHEMA, OUT_OF_STEPS, SYSTEM_PROMPT
@@ -48,8 +48,10 @@ class Agent:
         self.config = config
         self.screen_config = screen_config
         self.conversation = Conversation(SYSTEM_PROMPT, config.history_messages)
-        self.gate = PaymentGate(
-            config.payment_button_pattern, enabled=config.confirm_before_payment
+        self.gate = ConfirmationGate(
+            payment_pattern=config.payment_button_pattern,
+            discard_pattern=config.discard_button_pattern,
+            confirm_payment=config.confirm_before_payment,
         )
         self.executor = Executor(screen, self.gate, settle=self._settle)
         self.last_reply: Reply | None = None

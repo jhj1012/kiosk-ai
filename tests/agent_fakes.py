@@ -17,7 +17,11 @@ FAST_SCREEN = ScreenConfig(window_title="Test", settle_timeout_s=0.05, poll_inte
 
 
 def agent_config(**overrides: Any) -> AgentConfig:
-    values: dict[str, Any] = {"max_steps_per_request": 4, "payment_button_pattern": "^결제$"}
+    values: dict[str, Any] = {
+        "max_steps_per_request": 4,
+        "payment_button_pattern": "^결제$",
+        "discard_button_pattern": "^처음으로$",
+    }
     values.update(overrides)
     return AgentConfig(**values)
 

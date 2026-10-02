@@ -55,9 +55,9 @@ is next, e.g. "더 주문하실 메뉴가 있나요?".
 available. If the request is unclear ("추천해 주세요", "뭐가 있어요?"), name a few items you can \
 see, with prices, and ask.
 11. To change the order (remove an item, change a quantity), use the buttons in the cart.
-12. Never press a button that cancels the order or goes back to the start (e.g. "처음으로", \
-"취소", "전체 삭제") unless the customer asks for exactly that. To go back one step, use a \
-back button.
+12. Never press a button that throws away the whole order (e.g. "처음으로", "전체 삭제") \
+unless the customer asks for exactly that, and confirm first ("kind": "confirm"). To leave an \
+options page without adding the item, use its cancel ("취소") or back button.
 13. Payment: before pressing the final pay button, read back the order (items, options, \
 quantities) and the total amount shown on the screen, and ask for a clear yes with \
 "kind": "confirm". Press pay only after the customer says yes.
@@ -141,12 +141,12 @@ OUT_OF_STEPS = (
 )
 
 CONFIRM_QUESTION = """\
-A kiosk assistant asked the customer to confirm a payment:
+A kiosk assistant asked the customer to confirm something:
 "{question}"
 The customer answered:
 "{answer}"
-Did the customer clearly agree to pay now, without asking for any change? Answer "yes", \
-"no", or "unclear"."""
+Did the customer clearly agree, without asking for any change? Answer "yes", "no", or \
+"unclear"."""
 
 CONFIRM_SCHEMA = {
     "type": "object",

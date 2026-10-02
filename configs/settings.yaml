@@ -16,7 +16,8 @@ agent:
   max_steps_per_request: 10   # LLM calls per user message (one call can do several actions)
   history_messages: 30        # conversation messages kept for the LLM (oldest are dropped)
   confirm_before_payment: true
-  # Buttons that finish a payment: a regex matched against the button name (case-insensitive).
-  # Pressing one is blocked until the user said yes to a read-back of the order and total.
-  # Per-kiosk configuration, like target_window.title.
-  payment_button_pattern: "^(결제|결제 요청|pay)$"
+  # Irreversible buttons: regexes matched against the button name (case-insensitive). Pressing
+  # one is blocked until the user said yes to the assistant's confirm question (for payment: a
+  # read-back of the order and total). Per-kiosk configuration, like target_window.title.
+  payment_button_pattern: "^(결제|결제 요청|pay)$"            # finishes the payment
+  discard_button_pattern: "^(처음으로|전체 삭제|장바구니 전체 삭제|주문 취소)$"  # drops the order
