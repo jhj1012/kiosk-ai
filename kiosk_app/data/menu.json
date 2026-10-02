@@ -1,0 +1,97 @@
+{
+  "categories": [
+    {"id": "coffee", "name": "커피"},
+    {"id": "latte", "name": "라떼"},
+    {"id": "tea_ade", "name": "티·에이드"},
+    {"id": "dessert", "name": "디저트"}
+  ],
+  "option_groups": [
+    {
+      "id": "temperature",
+      "name": "온도",
+      "multi": false,
+      "choices": [
+        {"id": "hot", "name": "HOT", "price": 0},
+        {"id": "ice", "name": "ICE", "price": 0}
+      ]
+    },
+    {
+      "id": "size",
+      "name": "사이즈",
+      "multi": false,
+      "choices": [
+        {"id": "regular", "name": "Regular", "price": 0},
+        {"id": "large", "name": "Large", "price": 500}
+      ]
+    },
+    {
+      "id": "tumbler",
+      "name": "텀블러",
+      "multi": true,
+      "choices": [
+        {"id": "tumbler", "name": "텀블러 사용", "price": 0}
+      ]
+    },
+    {
+      "id": "shot",
+      "name": "커피 샷",
+      "multi": false,
+      "choices": [
+        {"id": "none", "name": "기본", "price": 0},
+        {"id": "extra_shot", "name": "샷 추가", "price": 600},
+        {"id": "two_extra_shots", "name": "2샷 추가", "price": 1200},
+        {"id": "decaf", "name": "디카페인", "price": 1000}
+      ]
+    },
+    {
+      "id": "syrup",
+      "name": "시럽",
+      "multi": false,
+      "choices": [
+        {"id": "none", "name": "없음", "price": 0},
+        {"id": "vanilla", "name": "바닐라 시럽", "price": 500},
+        {"id": "caramel", "name": "카라멜 시럽", "price": 500},
+        {"id": "hazelnut", "name": "헤이즐넛 시럽", "price": 500},
+        {"id": "light_vanilla", "name": "라이트 바닐라 시럽", "price": 500}
+      ]
+    },
+    {
+      "id": "topping",
+      "name": "토핑",
+      "multi": true,
+      "choices": [
+        {"id": "whipped_cream", "name": "휘핑 추가", "price": 500}
+      ]
+    }
+  ],
+  "discounts": [
+    {"id": "telecom", "name": "통신사 할인", "amount": 1000},
+    {"id": "coupon", "name": "쿠폰", "amount": 2000}
+  ],
+  "items": [
+    {"id": "espresso", "name": "에스프레소", "category": "coffee", "price": 3300,
+     "emoji": "☕", "options": ["shot"]},
+    {"id": "americano", "name": "아메리카노", "category": "coffee", "price": 4000,
+     "emoji": "☕", "options": ["temperature", "size", "tumbler", "shot", "syrup"]},
+    {"id": "cold_brew", "name": "콜드브루", "category": "coffee", "price": 4500,
+     "emoji": "🧊", "options": ["size", "tumbler", "syrup"]},
+    {"id": "halmega_coffee", "name": "할메가커피", "category": "coffee", "price": 2500,
+     "emoji": "🧊", "options": ["size", "tumbler", "shot"]},
+    {"id": "cafe_latte", "name": "카페라떼", "category": "latte", "price": 4500,
+     "emoji": "🥛", "options": ["temperature", "size", "tumbler", "shot", "syrup", "topping"]},
+    {"id": "cafe_mocha", "name": "카페모카", "category": "latte", "price": 5000,
+     "emoji": "🍫", "options": ["temperature", "size", "tumbler", "shot", "topping"]},
+    {"id": "flat_white", "name": "플랫화이트", "category": "latte", "price": 4800,
+     "emoji": "🥛", "options": ["temperature", "tumbler", "shot"]},
+    {"id": "einspanner", "name": "아인슈페너", "category": "latte", "price": 5200,
+     "emoji": "🍮", "options": ["tumbler", "shot"]},
+    {"id": "green_grape_ade", "name": "청포도 에이드", "category": "tea_ade", "price": 3500,
+     "emoji": "🍇", "options": ["size", "tumbler"]},
+    {"id": "chamomile_tea", "name": "캐모마일 티", "category": "tea_ade", "price": 3800,
+     "emoji": "🍵", "options": ["temperature", "size", "tumbler"]},
+    {"id": "vanilla_ice_cream", "name": "바닐라 아이스크림", "category": "dessert", "price": 3000,
+     "emoji": "🍦", "options": ["topping"]},
+    {"id": "chocolate_cookie", "name": "초코 쿠키", "category": "dessert", "price": 2500,
+     "emoji": "🍪", "options": []}
+  ]
+}
