@@ -22,16 +22,18 @@ assistant sends it the conversation and the text of the kiosk screen. `assistant
 | Module | Responsibility |
 |---|---|
 | `assistant/config.py` | Typed settings from `configs/*.yaml`, with `*.local.yaml` merged on top; loads the API key from a git-ignored `.env`. |
-| `assistant/userio` | `UserInput.listen()` and the event-based `UserOutput` (`say`, `ask`, `show_elements`, `set_state`). Console implementation now; STT, TTS and the overlay implement the same interfaces later. |
+| `assistant/userio` | `UserInput.listen()` and the event-based `UserOutput` (`say`, `ask`, `show_elements`, `set_state`). Console input and output (`console.py`), speech input (`speech.py`); TTS and the overlay implement `UserOutput` later. |
 | `assistant/screen` | Read the target window's UIA tree into a `Snapshot` (`reader.py`, pure Python), render it for the LLM (`format.py`), wait for the screen to settle (`settle.py`). `uia.py` is the only Windows/pywinauto module. |
 | `assistant/llm` | Gemini API client (structured JSON output, retries, clear key/model errors), the per-screen JSON schema, the system prompt. |
 | `assistant/agent` | One user turn: decide, act, reply (`loop.py`); run actions (`executor.py`); safety gate for payment and order-discarding buttons (`confirm_gate.py`); conversation history (`history.py`); the listen loop (`session.py`). |
-| `assistant/audio`, `stt`, `tts` *(planned)* | Microphone, speech recognition, speech output. |
+| `assistant/audio` | Voice activity detection (`vad.py`, energy-based, pure Python), WAV encoding (`wav.py`), one utterance from a frame source (`recorder.py`), the microphone (`mic.py`, the only `sounddevice` module), the half-duplex `SpeakingGate` (`duplex.py`). |
+| `assistant/stt` | Speech recognition with the Gemini API audio input (`transcriber.py`): prompt, `{sounds, speech, text}` schema, non-speech filtering, vocabulary hints from the screen. |
+| `assistant/tts` *(planned)* | Speech output. |
 | `assistant/overlay` *(planned)* | PySide6 overlay window: avatar, subtitles, kiosk element images, blurred background. |
 
-Run it with `uv run python -m assistant [--debug] [--model NAME]`. Each session logs every
-screen, model answer and action to `logs/session-*.log` (git-ignored). `/reset` starts a new
-conversation, `/quit` exits.
+Run it with `uv run python -m assistant [--voice] [--debug] [--model NAME]`. Each session
+logs every screen, model answer, action and recognized utterance to `logs/session-*.log`
+(git-ignored). Typed: `/reset` starts a new conversation, `/quit` exits; voice: Ctrl+C exits.
 
 ## How one user turn works
 
@@ -170,6 +172,97 @@ sent to the model again (`agent/customer.py`):
 thread (the main thread only waits), as the Qt overlay will need the main thread. `UiaScreen`
 creates its COM objects in the thread that calls `attach()` and refuses calls from other
 threads.
+
+## Voice input
+
+`uv run python -m assistant --voice` replaces the typed console input with `SpeechInput`
+(`userio/speech.py`). It implements the same `UserInput.listen() -> str | None`, so the agent
+and `run_session` are unchanged: the recognized text goes into `agent.handle()` exactly like
+a typed line.
+
+```
+listen() ──► recorder.record() ──► utterance (WAV) ──► Gemini STT ──► {"sounds", "speech", "text"}
+   ▲          mic frames + VAD                         (stt.model)          │
+   │                                                           not speech ──┤ (noise, cough,
+   └───────────── keep listening ◄─────────────────────────────────────────┘  silence)
+                                                               speech ──► return text ──► agent
+```
+
+1. `run_session` sets `LISTENING` and calls `listen()` in the agent thread.
+2. The first call opens the microphone and measures the background noise for
+   `audio.calibration_s` (1 s). Audio captured before each `listen()` is dropped: it was
+   recorded while the assistant was thinking or speaking.
+3. **Voice activity detection** (`audio/vad.py`): a 30 ms frame is *loud* when its RMS level
+   is above max(noise x `threshold_factor`, `min_threshold`). An utterance starts when the last
+   300 ms contain `start_ms` (90 ms) of loud audio. The frames don't have to be in a row:
+   syllables have short dips, and a quick "네" has only ~150 ms of loud audio. It keeps
+   `pre_roll_ms` (300 ms) from before the first loud frame, so the first syllable isn't cut.
+   It ends after `silence_end_ms` (800 ms) of quiet, and at `max_utterance_s` (15 s) at the
+   latest. Sounds with less than `min_utterance_ms` (120 ms) of loud audio are dropped. While
+   nobody speaks, the noise level keeps adapting.
+4. The utterance is sent as WAV to the speech model (`stt.model`, a different model than the
+   agent's, see [decisions.md](decisions.md)), while the state is `THINKING`. The answer is
+   structured JSON: `sounds` (a few words on what is audible, written first; it grounds the
+   decision like the agent's `screen` note), `speech` and `text`. Non-speech answers are
+   ignored and listening continues, so noise never reaches the agent.
+5. Speech is printed as `나(음성)> ...`, logged, and returned to `run_session`.
+
+Vocabulary hints: with `stt.vocabulary_hints`, the names on the current kiosk screen (prices
+and "(선택됨)" removed) are added to the prompt as a spelling list, which fixed
+"할메가 커피" → "할메가커피" and "포장이여" → "포장이요" in tests. The prompt says the list
+is *not* what was said: an earlier prompt with a cafe framing made the model invent
+"아이스 아메리카노 한 잔 주세요" from silence. The hints are read by calling `screen.read()`
+from inside `listen()`, which runs in the agent thread, so UIA objects stay in that thread.
+
+Errors never end the all-day loop:
+
+| Problem | What happens |
+|---|---|
+| No microphone, device busy or unplugged | `MicError`; the console shows it once, the mic is retried every 5 s, "마이크가 다시 연결되었어요." when it works again. |
+| Windows microphone privacy setting off | The stream opens but delivers only zeros. Calibration detects this (`SilentMicError`) and the console explains the setting. |
+| Gemini error (rate limit, 5xx, timeout) | The client's retries (same code as the agent's). If it still fails, the assistant says "죄송해요, 잘 못 들었어요. 다시 한 번 말씀해 주시겠어요?" and listens again. |
+| Steady loud noise (coffee grinder) | Utterances run to the 15 s cap and come back as non-speech; after two in a row the noise level is measured again. |
+| Device refuses 16 kHz (WDM-KS) | The microphone opens at the device's own rate; the VAD and Gemini handle any rate. |
+
+Developer options: `--push-to-talk` waits for Enter before each utterance (the VAD still
+finds the start and end), `--save-audio` writes each utterance to `recordings/` (git-ignored).
+`scripts/mic_check.py` lists devices, shows live levels and transcribes one utterance or a
+WAV file.
+
+### Half-duplex and the TTS phase
+
+The assistant must not hear itself. Today `say()` is synchronous and `listen()` drops the
+audio captured before it starts, so nothing the assistant outputs is ever transcribed. For TTS
+that plays in the background, `audio/duplex.py` has a `SpeakingGate`: the microphone drops
+frames while it is set and for `audio.echo_tail_ms` (300 ms) afterwards, and a muted
+microphone is not mistaken for a lost one. `__main__._speech_input` creates the gate; the TTS
+phase should:
+
+1. Create the gate once in `__main__` and pass it to both `Microphone` and the TTS output.
+2. Wrap every playback in `with gate.speaking(): ...` (also on errors).
+3. Keep `say()` blocking until playback has ended (or the gate set until then), so the
+   avatar's `SPEAKING` state and the subtitles stay in sync.
+
+Barge-in (the customer interrupting the assistant) is not supported: it would need echo
+cancellation, which the laptop's microphone array partly does in hardware but we can't rely
+on.
+
+### Requests per spoken turn
+
+Measured in the voice E2E test (iced americano, take-out, size, card payment):
+
+- **Speech recognition: exactly 1 request per utterance** on `stt.model` (2.0–2.9 s each),
+  including noise that the VAD let through and that came back as non-speech.
+- **Agent: 1–4 requests per turn** on `llm.model` (decisions plus the yes/no checks; about 2.4
+  on average), the same as for typed input. Speech adds nothing to the agent's requests.
+- So a five-turn order costs ~5 STT + ~12 agent requests. At ~15 requests/min per model, the
+  agent's model is the bottleneck, which is why STT uses a different model. Daily limits
+  matter more in long test sessions: ~500 requests/day for the flash-lite models, but only
+  20/day (5/min) for `gemini-3.8-flash` on the free tier.
+
+Latency from the end of speech to the text: 3.2–5.3 s, which is 0.8 s of silence detection
+(`silence_end_ms`) plus the STT request. Lower `silence_end_ms` makes it faster but cuts off
+people who pause.
 
 ## Planned: visual overlay
 
