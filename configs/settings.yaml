@@ -15,6 +15,10 @@ audio:
 agent:
   max_steps_per_request: 10   # LLM calls per user message (one call can do several actions)
   history_turns: 10           # customer turns kept for the LLM (oldest are dropped)
+  # Next customer: a new conversation starts when the kiosk is back on its idle (start) screen
+  # and nobody talked for new_customer_after_s, or when nobody talked for abandoned_after_s.
+  new_customer_after_s: 30
+  abandoned_after_s: 180
   confirm_before_payment: true   # guard the pay button (see below)
   # Irreversible buttons: regexes matched against the button name (case-insensitive).
   # Pay is pressed only after the user asked to pay, together with a read-back of the order and

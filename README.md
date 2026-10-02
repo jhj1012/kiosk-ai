@@ -67,6 +67,14 @@ as Google asks, up to a minute); if it still fails, it says
 
 In our tests a step normally took 1–6 s, but some took ~50 s during busy periods.
 
+## Running all day
+
+Like a real kiosk, the assistant keeps running between customers. When the kiosk is back on
+its start screen and nobody has talked for 30 seconds (or nobody for 3 minutes, whatever the
+screen shows), the next message starts a fresh conversation: nothing from the previous
+customer is remembered or sent to Gemini. Start the assistant while the kiosk shows its start
+screen; the times are `new_customer_after_s` / `abandoned_after_s` in `configs/settings.yaml`.
+
 ## Docs
 
 - [docs/decisions.md](docs/decisions.md): what we chose and why

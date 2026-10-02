@@ -28,9 +28,20 @@ class Conversation:
         self.system_prompt = system_prompt
         self.max_turns = max_turns
         self._turns: list[_Turn] = []
+        self._paid_in: _Turn | None = None  # the turn in which the last payment was made
 
     def clear(self) -> None:
         self._turns.clear()
+        self._paid_in = None
+
+    @property
+    def is_empty(self) -> bool:
+        return not self._turns
+
+    def mark_payment(self) -> None:
+        """A payment was made in the current turn: its request to pay is used up."""
+        if self._turns:
+            self._paid_in = self._turns[-1]
 
     def add_customer(self, text: str) -> None:
         """Start a new turn; the oldest turns are dropped beyond `max_turns`."""
@@ -72,8 +83,13 @@ class Conversation:
         return messages
 
     def customer_messages(self, last: int) -> list[str]:
-        """The customer's latest messages, oldest first."""
-        return [t.customer for t in self._turns[-last:]]
+        """The customer's latest messages since the last payment, oldest first."""
+        turns = self._turns
+        for i, turn in enumerate(turns):
+            if turn is self._paid_in:  # identity: equal-looking turns are different turns
+                turns = turns[i + 1 :]
+                break
+        return [t.customer for t in turns[-last:]]
 
     def _current(self) -> _Turn:
         if not self._turns:

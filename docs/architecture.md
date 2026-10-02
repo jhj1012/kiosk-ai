@@ -137,6 +137,26 @@ words and the final reply; the actions and results in between are only kept for 
 turn. Long contexts made answers worse in tests (and cost more), so this matters. The stable
 prefix also lets the API reuse its prompt cache between the calls of one turn.
 
+### Next customer
+
+The assistant runs all day, like the kiosk. Each customer gets a fresh conversation, so the
+previous customer's messages, remembered answers and payment approval are neither reused nor
+sent to the model again (`agent/customer.py`):
+
+- At start-up the assistant learns the kiosk's **idle screen** (the screen it shows while
+  waiting; identified by its set of controls, so changing texts do not matter).
+- Before each message: if the kiosk is back on the idle screen and nobody talked for
+  `agent.new_customer_after_s` (30 s), a new conversation starts. A customer who asks
+  "그러면 이제 어디로 가야 해요?" right after paying is still the same customer and gets an answer
+  with their order number.
+- If nobody talked for `agent.abandoned_after_s` (180 s) and the screen still shows an
+  unfinished order, the next person is a new customer too; the model is told to ask whether to
+  continue that order or start over.
+- A request to pay is used up by the payment: an earlier "결제할게요" never approves a second
+  payment.
+- If the kiosk window is missing at start-up, the assistant waits for it instead of exiting.
+- Start the assistant while the kiosk shows its idle screen (otherwise it learns the wrong one).
+
 ### Threading
 
 `Agent.handle()` is a plain blocking call. `__main__` already runs the agent in a worker

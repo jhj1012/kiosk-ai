@@ -9,8 +9,11 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import time
+from collections.abc import Callable
 
 from assistant.agent.confirm_gate import ConfirmationGate
+from assistant.agent.customer import CustomerTracker, Switch
 from assistant.agent.decision import Decision, DecisionError, Reply, parse_decision
 from assistant.agent.executor import Executor
 from assistant.agent.history import Conversation
@@ -37,6 +40,10 @@ SCREEN_ERROR_MESSAGE = (
 )
 LLM_ERROR_MESSAGE = "죄송해요, 지금 잠시 문제가 생겼어요. 다시 한 번 말씀해 주시겠어요?"
 PAYMENT_CONTEXT_MESSAGES = 6  # customer messages the payment check looks at
+NEW_CUSTOMER_NOTE = (
+    "NOTE: A new customer is talking now. The screen still shows an unfinished order from "
+    "someone else. Before using it, ask whether to continue that order or start over."
+)
 FALLBACK_MESSAGE = "죄송해요, 요청을 끝까지 처리하지 못했어요. 다시 한 번 말씀해 주시겠어요?"
 
 
@@ -48,6 +55,7 @@ class Agent:
         output: UserOutput,
         config: AgentConfig,
         screen_config: ScreenConfig,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.screen = screen
         self.llm = llm
@@ -61,12 +69,22 @@ class Agent:
             guard_payment=config.confirm_before_payment,
         )
         self.executor = Executor(screen, self.gate, settle=self._settle)
+        self.customers = CustomerTracker(
+            new_customer_after_s=config.new_customer_after_s,
+            abandoned_after_s=config.abandoned_after_s,
+            clock=clock,
+        )
         self.last_reply: Reply | None = None
 
+    def start(self) -> None:
+        """Call once when the assistant starts: the kiosk's current screen is its idle screen."""
+        self.customers.learn_idle_screen(self._settle())
+
     def reset(self) -> None:
-        """Forget the conversation (e.g. a new customer)."""
+        """Forget the conversation: the next message comes from a new customer."""
         self.conversation.clear()
         self.last_reply = None
+        self.customers.forget()
 
     def handle(self, text: str) -> Reply:
         """Handle one customer message. Always ends with exactly one say() or ask()."""
@@ -88,6 +106,7 @@ class Agent:
         self._deliver(reply, snapshot)
         self.conversation.end_turn(reply.kind, reply.message)
         self.last_reply = reply
+        self.customers.touch()
         self.output.set_state(AssistantState.IDLE)
         return reply
 
@@ -95,7 +114,13 @@ class Agent:
 
     def _run_turn(self, text: str) -> tuple[Reply, Snapshot]:
         snapshot = self._settle()
+        switch = self.customers.check(snapshot)
+        if switch is not Switch.SAME:
+            log.info("new customer (%s): starting a new conversation", switch)
+            self.reset()
         self.conversation.add_customer(text)
+        if switch is Switch.ABANDONED:
+            self.conversation.add_note(NEW_CUSTOMER_NOTE)
         confirm_check = None
         if self.last_reply is not None and self.last_reply.kind == "confirm":
             confirm_check = functools.partial(self._customer_agreed, self.last_reply.message, text)
@@ -123,6 +148,8 @@ class Agent:
             self.gate.start_batch(decision.read_back)
             execution = self.executor.run(decision.actions, snapshot)
             self.conversation.add_note(execution.report())
+            if self.gate.paid_with_read_back:
+                self.conversation.mark_payment()  # this request to pay is used up
             last_failure = attempt if execution.failed else None
             snapshot = execution.snapshot
             self.output.set_state(AssistantState.THINKING)

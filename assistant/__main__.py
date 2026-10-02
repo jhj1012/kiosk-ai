@@ -11,6 +11,7 @@ import argparse
 import logging
 import sys
 import threading
+import time
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from assistant.screen.uia import UiaScreen
 from assistant.userio.console import ConsoleInput, ConsoleOutput
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+WINDOW_RETRY_S = 5.0  # how often to look for the kiosk window while it is missing
 log = logging.getLogger("assistant")
 
 
@@ -76,15 +78,28 @@ def _run_agent(config: Config, llm: GeminiChatModel, debug: bool, failed: thread
     output = ConsoleOutput(show_states=debug)
     try:
         screen = UiaScreen(config.screen)
-        screen.attach()
+        _wait_for_window(screen)
         agent = Agent(screen, llm, output, config.agent, config.screen)
         run_session(agent, ConsoleInput(), output)
-    except WindowNotFoundError as e:
-        print(f"Screen error: {e}", file=sys.stderr)
-        failed.set()
     except Exception:
         log.exception("agent crashed")
         failed.set()
+
+
+def _wait_for_window(screen: UiaScreen) -> None:
+    """Attach to the kiosk window, waiting until it appears (the assistant runs all day)."""
+    told = False
+    while True:
+        try:
+            screen.attach()
+            if told:
+                print("키오스크 창을 찾았어요.", flush=True)
+            return
+        except WindowNotFoundError as e:
+            if not told:
+                print(f"Screen: {e}\n키오스크 창을 기다리는 중... (Ctrl+C로 종료)", flush=True)
+                told = True
+            time.sleep(WINDOW_RETRY_S)
 
 
 def _setup_logging(debug: bool) -> Path:

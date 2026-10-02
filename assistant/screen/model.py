@@ -157,6 +157,14 @@ class Snapshot:
             for e in self.elements
         )
 
+    def control_names(self) -> frozenset[str]:
+        """Names of all controls, enabled or not: identifies a screen across reads and runs."""
+        return frozenset(
+            f"{e.kind}:{e.name}"
+            for e in self.elements
+            if not e.is_region and (e.ref is not None or not e.enabled)
+        )
+
     def controls(self) -> frozenset[tuple[int, ...] | tuple[str, str]]:
         """Identity of every control, enabled or not, ignoring state: changes only when
         controls appear or disappear (new page, other tab), not when one is toggled."""

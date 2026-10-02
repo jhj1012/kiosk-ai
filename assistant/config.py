@@ -47,6 +47,8 @@ class ScreenConfig:
 class AgentConfig:
     max_steps_per_request: int = 10
     history_turns: int = 10
+    new_customer_after_s: float = 30.0
+    abandoned_after_s: float = 180.0
     confirm_before_payment: bool = True
     payment_button_pattern: str = r"^(결제|결제 요청|pay)$"
     discard_button_pattern: str = ""
