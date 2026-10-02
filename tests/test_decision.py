@@ -109,7 +109,7 @@ def test_decision_schema_limits_numbers_to_the_screen() -> None:
     assert by_do['{"const": "scroll"}']["id"]["enum"] == [1]
     assert "id" not in by_do['{"const": "type_text"}']  # no edit field: keypad typing
     assert reply["properties"]["choices"]["items"]["enum"] == [2, 3, 4, 5]
-    assert act["required"] == ["screen", "todo", "next", "actions"]
+    assert act["required"] == ["screen", "todo", "missing", "next", "actions"]
 
 
 def test_schema_variants_follow_the_screen() -> None:
@@ -140,3 +140,16 @@ def test_conversation_trims_whole_old_turns() -> None:
     built = conversation.build('[1] Button "A"')
     assert built[0] == {"role": "system", "content": "system"}
     assert built[-1]["content"].startswith("CURRENT SCREEN:")
+
+
+def test_open_required_choices_only_allow_selecting() -> None:
+    def answer(*actions: dict) -> object:
+        return {"next": "act", "missing": ["온도"], "actions": list(actions)}
+
+    # [5] 담기 would decide the open choice with the screen's default
+    with pytest.raises(DecisionError, match="missing choices"):
+        parse(answer({"do": "select", "id": 3}, {"do": "click", "id": 5, "times": 1}))
+    assert len(parse(answer({"do": "select", "id": 3})).actions) == 1
+    assert len(parse(answer({"do": "click", "id": 3, "times": 1})).actions) == 1  # a check box
+    no_missing = {"next": "act", "missing": [], "actions": [{"do": "click", "id": 5, "times": 1}]}
+    assert parse(no_missing).actions[0].ref == 5

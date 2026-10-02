@@ -11,6 +11,7 @@ from typing import Any
 from assistant.screen.model import Pattern, Snapshot
 
 NOTE_MAX = 150  # "screen" and "todo": short reasoning written before deciding
+MISSING_MAX = 6  # "missing": required choices on the screen the customer has not given
 MESSAGE_MAX = 400
 TEXT_MAX = 40
 MAX_ACTIONS = 12
@@ -29,6 +30,7 @@ def reply_schema(snapshot: Snapshot) -> dict[str, Any]:
     return _object(
         screen=_string(NOTE_MAX),
         todo=_string(NOTE_MAX),
+        missing=_missing(),
         next={"const": "reply"},
         kind={"type": "string", "enum": list(REPLY_KINDS)},
         message=_string(MESSAGE_MAX),
@@ -75,6 +77,7 @@ def _act_schema(snapshot: Snapshot) -> dict[str, Any]:
     return _object(
         screen=_string(NOTE_MAX),
         todo=_string(NOTE_MAX),
+        missing=_missing(),
         next={"const": "act"},
         actions={
             "type": "array",
@@ -96,6 +99,10 @@ def _object(**properties: dict[str, Any]) -> dict[str, Any]:
 
 def _string(max_length: int) -> dict[str, Any]:
     return {"type": "string", "maxLength": max_length}
+
+
+def _missing() -> dict[str, Any]:
+    return {"type": "array", "items": _string(30), "maxItems": MISSING_MAX}
 
 
 def _ref(refs: list[int]) -> dict[str, Any]:

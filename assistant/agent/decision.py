@@ -11,6 +11,7 @@ from assistant.llm.schema import MAX_TIMES, MAX_WAIT_S, REPLY_KINDS
 from assistant.screen.model import Element, Snapshot
 
 ACTIONS = ("click", "select", "unselect", "type_text", "scroll", "wait")
+CHOICE_ACTIONS = ("select", "unselect", "scroll", "wait")  # allowed while choices are missing
 
 
 class DecisionError(ValueError):
@@ -63,6 +64,14 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         if not isinstance(actions, list) or not actions:
             raise DecisionError('"act" needs at least one action.')
         parsed = tuple(_parse_action(a, snapshot) for a in actions)
+        missing = [str(m) for m in data.get("missing") or [] if str(m).strip()]
+        if missing and not all(_is_choice(a, snapshot) for a in parsed):
+            # Pressing on (add to cart, next, ...) while a required choice is open would
+            # decide it for the customer with the screen's default.
+            raise DecisionError(
+                f"You listed missing choices ({', '.join(missing)}). Do not press anything else "
+                "yet: only select what the customer already told you, then ask about the rest."
+            )
         return Decision(thought, actions=parsed, raw=data)
     raise DecisionError('"next" must be "act" or "reply".')
 
@@ -111,6 +120,14 @@ def _parse_action(item: Any, snapshot: Snapshot) -> ActionRequest:
         raise DecisionError(f"[{ref}] is a group, not a control. Use a number of a control in it.")
     times = _clamp(item.get("times"), 1, MAX_TIMES) if do == "click" else 1
     return ActionRequest(do, ref=ref, times=times)
+
+
+def _is_choice(action: ActionRequest, snapshot: Snapshot) -> bool:
+    """True for actions that only set choices (clicking a check box selects it)."""
+    if action.do in CHOICE_ACTIONS:
+        return True
+    element = snapshot.by_ref(action.ref) if action.ref is not None else None
+    return action.do == "click" and element is not None and element.is_toggleable
 
 
 def _check_ref(ref: Any, snapshot: Snapshot) -> Element:
