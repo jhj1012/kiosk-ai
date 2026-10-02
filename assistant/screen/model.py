@@ -95,6 +95,7 @@ class Element:
     patterns: frozenset[Pattern] = frozenset()
     is_region: bool = False  # a named container, shown as <name>
     scroll: ScrollInfo | None = None  # set on regions that can be scrolled
+    key: str = ""  # unique name the LLM uses to act on a numbered element ("이름 (2)" if repeated)
 
     @property
     def label(self) -> str:
@@ -118,6 +119,13 @@ class Snapshot:
 
     def by_ref(self, ref: int) -> Element | None:
         return next((e for e in self.elements if e.ref == ref), None)
+
+    def by_key(self, key: str) -> Element | None:
+        return next((e for e in self.elements if e.ref is not None and e.key == key), None)
+
+    @property
+    def keys(self) -> list[str]:
+        return [e.key for e in self.elements if e.ref is not None]
 
     def find(self, runtime_id: tuple[int, ...]) -> Element | None:
         """The element with this UIA RuntimeId, if it is still on screen."""

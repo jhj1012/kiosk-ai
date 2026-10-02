@@ -24,8 +24,8 @@ def format_element(element: Element) -> str:
     indent = "  " * element.depth
     ref = f"[{element.ref}] " if element.ref is not None else ""
     if element.is_region:
-        return f"{indent}{ref}<{element.name}>{_scroll_hint(element)}"
-    line = f'{indent}{ref}{element.kind} "{element.name}"'
+        return f"{indent}{ref}<{element.key or element.name}>{_scroll_hint(element)}"
+    line = f'{indent}{ref}{element.kind} "{element.key or element.name}"'
     if element.checked is not None:
         line += " checked" if element.checked else " unchecked"
     if element.value is not None:

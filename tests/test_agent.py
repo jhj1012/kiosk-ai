@@ -16,6 +16,7 @@ from tests.agent_fakes import (
     agent_config,
     click,
     reply,
+    select,
 )
 from tests.screen_fakes import button, check, text, window
 
@@ -52,7 +53,9 @@ def test_reply_only_turn_gives_exactly_one_message() -> None:
 
 def test_act_then_ask_with_choices_from_new_screen() -> None:
     screen = start_and_options()
-    llm = FakeLlm(act(click(1)), reply("HOT과 ICE 중 어떤 걸로 드릴까요?", choices=[1, 2]))
+    llm = FakeLlm(
+        act(click("주문하기")), reply("HOT과 ICE 중 어떤 걸로 드릴까요?", choices=["HOT", "ICE"])
+    )
     agent, output = make_agent(screen, llm)
     agent.handle("아메리카노 주세요")
 
@@ -69,8 +72,8 @@ def test_act_then_ask_with_choices_from_new_screen() -> None:
 def test_select_toggles_only_unchecked_choices() -> None:
     screen = start_and_options()
     llm = FakeLlm(
-        act(click(1)),
-        act({"do": "select", "id": 2}, {"do": "select", "id": 1}),
+        act(click("주문하기")),
+        act(select("ICE"), select("HOT")),
         reply("ICE로 골랐어요.", kind="tell"),
     )
     agent, _ = make_agent(screen, llm)
@@ -83,11 +86,15 @@ def test_select_toggles_only_unchecked_choices() -> None:
 
 def test_invalid_id_is_reported_and_the_model_retries() -> None:
     screen = start_and_options()
-    llm = FakeLlm(act(click(99)), act(click(1)), reply("다음 화면이에요.", kind="tell"))
+    llm = FakeLlm(
+        act(click("없는 버튼")), act(click("주문하기")), reply("다음 화면이에요.", kind="tell")
+    )
     agent, output = make_agent(screen, llm)
     agent.handle("주문할게요")
     retry_messages, _ = llm.requests[1]
-    assert any("[99] is not a number on the CURRENT SCREEN" in m["content"] for m in retry_messages)
+    assert any(
+        '"없는 버튼" is not a control on the CURRENT SCREEN' in m["content"] for m in retry_messages
+    )
     assert screen.calls == [("invoke", "주문하기")]
     assert output.messages == [("say", "다음 화면이에요.")]
 
@@ -102,7 +109,9 @@ def test_invalid_json_is_reported_and_the_model_retries() -> None:
 
 def test_step_limit_ends_with_one_reply_from_reply_only_schema() -> None:
     screen = FakeScreen(window(button("새로고침")))
-    llm = FakeLlm(*[act(click(1))] * 3, reply("세 번 눌렀지만 끝나지 않았어요.", kind="tell"))
+    llm = FakeLlm(
+        *[act(click("새로고침"))] * 3, reply("세 번 눌렀지만 끝나지 않았어요.", kind="tell")
+    )
     agent, output = make_agent(screen, llm, max_steps_per_request=3)
     agent.handle("계속 눌러 주세요")
     assert len(llm.requests) == 4
@@ -115,7 +124,9 @@ def test_step_limit_ends_with_one_reply_from_reply_only_schema() -> None:
 
 def test_repeating_a_failed_batch_ends_the_turn_early() -> None:
     screen = FakeScreen(window(button("결제")))  # blocked by the payment gate every time
-    llm = FakeLlm(act(click(1)), act(click(1)), reply("결제 전에 주문을 확인할게요.", kind="tell"))
+    llm = FakeLlm(
+        act(click("결제")), act(click("결제")), reply("결제 전에 주문을 확인할게요.", kind="tell")
+    )
     agent, output = make_agent(screen, llm, max_steps_per_request=10)
     agent.handle("결제")
     assert len(llm.requests) == 3  # second identical batch is not run; then the final reply
@@ -125,7 +136,7 @@ def test_repeating_a_failed_batch_ends_the_turn_early() -> None:
 
 def test_step_limit_falls_back_to_fixed_message() -> None:
     screen = FakeScreen(window(button("새로고침")))
-    llm = FakeLlm(act(click(1)), act(click(1)), "not json")
+    llm = FakeLlm(act(click("새로고침")), act(click("새로고침")), "not json")
     agent, output = make_agent(screen, llm, max_steps_per_request=2)
     agent.handle("계속")
     assert output.messages == [("say", FALLBACK_MESSAGE)]
@@ -156,7 +167,7 @@ def pay_screen() -> FakeScreen:
 def test_payment_button_is_blocked_without_confirmation() -> None:
     screen = pay_screen()
     llm = FakeLlm(
-        act({"do": "select", "id": 1}, click(2)),
+        act(select("카드"), click("결제")),
         reply("카드로 9000원 결제할까요?", kind="confirm"),
     )
     agent, output = make_agent(screen, llm)
@@ -172,7 +183,7 @@ def test_payment_allowed_after_confirm_and_yes() -> None:
     screen = pay_screen()
     llm = FakeLlm(
         reply("카드로 9000원 결제할까요?", kind="confirm"),
-        act(click(2)),
+        act(click("결제")),
         {"answer": "yes"},  # confirmation check
         reply("결제가 완료되었어요.", kind="tell"),
     )
@@ -189,7 +200,7 @@ def test_payment_blocked_when_customer_does_not_agree() -> None:
     screen = pay_screen()
     llm = FakeLlm(
         reply("카드로 9000원 결제할까요?", kind="confirm"),
-        act(click(2)),
+        act(click("결제")),
         {"answer": "no"},
         reply("알겠어요, 결제하지 않을게요.", kind="tell"),
     )
@@ -204,7 +215,7 @@ def test_confirmation_only_counts_for_the_next_turn() -> None:
     llm = FakeLlm(
         reply("카드로 9000원 결제할까요?", kind="confirm"),
         reply("쿠폰은 없어요.", kind="tell"),
-        act(click(2)),
+        act(click("결제")),
         reply("결제 전에 다시 확인할게요.", kind="tell"),
     )
     agent, _ = make_agent(screen, llm)
@@ -216,7 +227,7 @@ def test_confirmation_only_counts_for_the_next_turn() -> None:
 
 def test_payment_gate_can_be_disabled() -> None:
     screen = pay_screen()
-    llm = FakeLlm(act(click(2)), reply("결제했어요.", kind="tell"))
+    llm = FakeLlm(act(click("결제")), reply("결제했어요.", kind="tell"))
     agent, _ = make_agent(screen, llm, confirm_before_payment=False)
     agent.handle("결제")
     assert ("invoke", "결제") in screen.calls
@@ -224,7 +235,9 @@ def test_payment_gate_can_be_disabled() -> None:
 
 def test_history_keeps_turns_but_not_old_screens() -> None:
     screen = start_and_options()
-    llm = FakeLlm(reply("무엇을 드릴까요?"), act(click(1)), reply("HOT, ICE 중 골라 주세요."))
+    llm = FakeLlm(
+        reply("무엇을 드릴까요?"), act(click("주문하기")), reply("HOT, ICE 중 골라 주세요.")
+    )
     agent, _ = make_agent(screen, llm)
     agent.handle("안녕하세요")
     agent.handle("아메리카노")
@@ -259,7 +272,11 @@ def test_session_greets_handles_commands_and_ends() -> None:
 
 
 def test_repeating_an_invalid_answer_ends_the_turn_early() -> None:
-    llm = FakeLlm(act(click(99)), act(click(99)), reply("다시 말씀해 주시겠어요?", kind="tell"))
+    llm = FakeLlm(
+        act(click("없는 버튼")),
+        act(click("없는 버튼")),
+        reply("다시 말씀해 주시겠어요?", kind="tell"),
+    )
     agent, output = make_agent(start_and_options(), llm, max_steps_per_request=10)
     agent.handle("주문")
     assert len(llm.requests) == 3
@@ -271,11 +288,11 @@ def test_discard_button_needs_confirmation_too() -> None:
     screen = FakeScreen(window(text("옵션 선택"), button("처음으로"), button("취소")))
     screen.on_press["처음으로"] = lambda: home.update(pressed=True)
     llm = FakeLlm(
-        act(click(1)),  # blocked: it would throw away the order
-        act(click(2)),  # the model uses the item's cancel button instead
+        act(click("처음으로")),  # blocked: it would throw away the order
+        act(click("취소")),  # the model uses the item's cancel button instead
         reply("메뉴 화면으로 돌아왔어요.", kind="tell"),
         reply("주문을 모두 취소할까요?", kind="confirm"),
-        act(click(1)),
+        act(click("처음으로")),
         {"answer": "yes"},
         reply("처음 화면으로 돌아갔어요.", kind="tell"),
     )

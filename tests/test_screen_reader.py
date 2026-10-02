@@ -127,3 +127,11 @@ def test_snapshot_lookup_and_busy() -> None:
 
 def test_empty_screen_text() -> None:
     assert format_snapshot(snapshot()) == EMPTY_SCREEN
+
+
+def test_repeated_control_names_get_unique_keys() -> None:
+    snap = snapshot(button("수량 증가"), text("수량 증가"), button("수량 증가"), button("담기"))
+    assert snap.keys == ["수량 증가", "수량 증가 (2)", "담기"]
+    assert format_snapshot(snap).splitlines()[2] == '[2] Button "수량 증가 (2)"'
+    assert snap.by_key("수량 증가 (2)") == snap.by_ref(2)
+    assert snap.by_key("수량 증가 (3)") is None

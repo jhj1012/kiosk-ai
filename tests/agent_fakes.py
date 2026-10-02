@@ -121,7 +121,7 @@ def act(*actions: dict[str, Any], thought: str = "t") -> dict[str, Any]:
     return {"screen": "s", "todo": thought, "next": "act", "actions": list(actions)}
 
 
-def reply(message: str, kind: str = "ask", choices: list[int] | None = None) -> dict[str, Any]:
+def reply(message: str, kind: str = "ask", choices: list[str] | None = None) -> dict[str, Any]:
     return {
         "screen": "s",
         "next": "reply",
@@ -131,8 +131,12 @@ def reply(message: str, kind: str = "ask", choices: list[int] | None = None) -> 
     }
 
 
-def click(ref: int, times: int = 1) -> dict[str, Any]:
-    return {"do": "click", "id": ref, "times": times}
+def click(target: str, times: int = 1) -> dict[str, Any]:
+    return {"do": "click", "target": target, "times": times}
+
+
+def select(target: str) -> dict[str, Any]:
+    return {"do": "select", "target": target}
 
 
 LLM_DOWN = LlmError("connection refused")

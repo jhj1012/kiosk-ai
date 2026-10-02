@@ -18,7 +18,7 @@ from __future__ import annotations
 import itertools
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from assistant.screen.model import Element, Pattern, Rect, ScrollInfo, Snapshot
 
@@ -115,7 +115,24 @@ def build_snapshot(root: RawNode, window_title: str) -> Snapshot:
         items = items[0].children
     elements: list[Element] = []
     _flatten(items, 0, elements, itertools.count(1))
-    return Snapshot(window_title=window_title, elements=tuple(elements), window_rect=root.rect)
+    return Snapshot(
+        window_title=window_title, elements=tuple(_with_keys(elements)), window_rect=root.rect
+    )
+
+
+def _with_keys(elements: list[Element]) -> list[Element]:
+    """Give each numbered element a unique key: its name, plus " (2)", " (3)" if repeated."""
+    seen: dict[str, int] = {}
+    result = []
+    for e in elements:
+        if e.ref is None:
+            result.append(e)
+            continue
+        base = e.name or e.kind
+        seen[base] = seen.get(base, 0) + 1
+        key = base if seen[base] == 1 else f"{base} ({seen[base]})"
+        result.append(replace(e, key=key))
+    return result
 
 
 def _convert(node: RawNode, clip: Rect | None) -> list[_Item | _ScrollBar]:

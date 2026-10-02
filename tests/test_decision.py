@@ -29,9 +29,9 @@ def test_parse_act() -> None:
             "thought": "ice, then add",
             "next": "act",
             "actions": [
-                {"do": "select", "id": 3},
-                {"do": "click", "id": 4, "times": 99},
-                {"do": "scroll", "id": 1, "direction": "up"},
+                {"do": "select", "target": "ICE"},
+                {"do": "click", "target": "수량 증가", "times": 99},
+                {"do": "scroll", "target": "옵션", "direction": "up"},
                 {"do": "wait", "seconds": 0},
                 {"do": "type_text", "text": " 0101 "},
             ],
@@ -59,7 +59,7 @@ def test_parse_reply_cleans_message_and_choices() -> None:
             "next": "reply",
             "kind": "ask",
             "message": "[2] HOT, [3] ICE?",
-            "choices": [2, 3, 3, 77, "x"],
+            "choices": ["HOT", "ICE", "ICE", "없음", 7],
         }
     )
     assert decision.reply is not None
@@ -76,10 +76,13 @@ def test_reply_kind_is_guessed_when_missing() -> None:
     ("data", "error"),
     [
         ({"next": "act", "actions": []}, "at least one action"),
-        ({"next": "act", "actions": [{"do": "fly", "id": 1}]}, "Unknown action"),
-        ({"next": "act", "actions": [{"do": "click", "id": 99}]}, "[99] is not a number"),
-        ({"next": "act", "actions": [{"do": "click", "id": 1}]}, "is a group"),
-        ({"next": "act", "actions": [{"do": "scroll", "id": 5}]}, "cannot be scrolled"),
+        ({"next": "act", "actions": [{"do": "fly", "target": "HOT"}]}, "Unknown action"),
+        (
+            {"next": "act", "actions": [{"do": "click", "target": "피자"}]},
+            '"피자" is not a control',
+        ),
+        ({"next": "act", "actions": [{"do": "click", "target": "옵션"}]}, "is a group"),
+        ({"next": "act", "actions": [{"do": "scroll", "target": "담기"}]}, "cannot be scrolled"),
         ({"next": "act", "actions": [{"do": "type_text", "text": " "}]}, "needs a"),
         ({"next": "reply", "message": ""}, "needs a"),
         ({"next": "maybe"}, '"next" must be'),
@@ -105,10 +108,11 @@ def test_decision_schema_limits_numbers_to_the_screen() -> None:
     act, reply = schema["anyOf"]
     variants = act["properties"]["actions"]["items"]["anyOf"]
     by_do = {json.dumps(v["properties"]["do"]): v["properties"] for v in variants}
-    assert by_do['{"const": "click"}']["id"]["enum"] == [2, 3, 4, 5]
-    assert by_do['{"const": "scroll"}']["id"]["enum"] == [1]
-    assert "id" not in by_do['{"const": "type_text"}']  # no edit field: keypad typing
-    assert reply["properties"]["choices"]["items"]["enum"] == [2, 3, 4, 5]
+    controls = ["HOT", "ICE", "수량 증가", "담기"]
+    assert by_do['{"const": "click"}']["target"]["enum"] == controls
+    assert by_do['{"const": "scroll"}']["target"]["enum"] == ["옵션"]
+    assert "target" not in by_do['{"const": "type_text"}']  # no edit field: keypad typing
+    assert reply["properties"]["choices"]["items"]["enum"] == controls
     assert act["required"] == ["screen", "todo", "need_to_ask", "next", "actions"]
 
 
@@ -116,7 +120,7 @@ def test_schema_variants_follow_the_screen() -> None:
     form = snapshot(edit("이름"), button("확인"))
     variants = decision_schema(form)["anyOf"][0]["properties"]["actions"]["items"]["anyOf"]
     type_text = next(v for v in variants if v["properties"]["do"] == {"const": "type_text"})
-    assert type_text["properties"]["id"]["enum"] == [1]
+    assert type_text["properties"]["target"]["enum"] == ["이름"]
     assert not any(v["properties"]["do"] == {"const": "scroll"} for v in variants)
 
     empty = snapshot(text("결제 중입니다"))
@@ -148,10 +152,14 @@ def test_open_required_choices_only_allow_selecting() -> None:
 
     # [5] 담기 would decide the open choice with the screen's default
     with pytest.raises(DecisionError, match="need to ask"):
-        parse(answer({"do": "select", "id": 3}, {"do": "click", "id": 5, "times": 1}))
-    assert len(parse(answer({"do": "select", "id": 3})).actions) == 1
-    assert len(parse(answer({"do": "click", "id": 3, "times": 1})).actions) == 1  # a check box
-    click_add = [{"do": "click", "id": 5, "times": 1}]
+        parse(
+            answer({"do": "select", "target": "ICE"}, {"do": "click", "target": "담기", "times": 1})
+        )
+    assert len(parse(answer({"do": "select", "target": "ICE"})).actions) == 1
+    assert (
+        len(parse(answer({"do": "click", "target": "ICE", "times": 1})).actions) == 1
+    )  # a check box
+    click_add = [{"do": "click", "target": "담기", "times": 1}]
     no_missing = {"next": "act", "need_to_ask": [], "actions": click_add}
     assert parse(no_missing).actions[0].ref == 5
 
@@ -159,11 +167,17 @@ def test_open_required_choices_only_allow_selecting() -> None:
 def test_missing_choices_not_on_the_screen_do_not_block() -> None:
     # The model sometimes lists a choice of a later screen (size, while on the menu).
     menu = snapshot(text("메뉴"), button("카페라떼 4500원"))
-    answer = {"next": "act", "need_to_ask": ["사이즈"], "actions": [{"do": "click", "id": 1}]}
+    answer = {
+        "next": "act",
+        "need_to_ask": ["사이즈"],
+        "actions": [{"do": "click", "target": "카페라떼 4500원"}],
+    }
     assert parse_decision(json.dumps(answer, ensure_ascii=False), menu).actions[0].ref == 1
     options = snapshot(text("사이즈 선택"), check("Regular", on=True), button("담기"))
     with pytest.raises(DecisionError):
-        parse_decision(json.dumps({**answer, "actions": [{"do": "click", "id": 2}]}), options)
+        parse_decision(
+            json.dumps({**answer, "actions": [{"do": "click", "target": "담기"}]}), options
+        )
 
 
 def test_choice_selected_in_the_same_answer_counts_as_answered() -> None:
@@ -173,7 +187,7 @@ def test_choice_selected_in_the_same_answer_counts_as_answered() -> None:
     answer = {
         "next": "act",
         "need_to_ask": ["사이즈"],
-        "actions": [{"do": "select", "id": 2}, {"do": "click", "id": 3, "times": 1}],
+        "actions": [{"do": "select", "target": "사이즈 Large"}, {"do": "click", "target": "담기"}],
     }
     decision = parse_decision(json.dumps(answer, ensure_ascii=False), options)
     assert [a.ref for a in decision.actions] == [2, 3]

@@ -95,13 +95,8 @@ def _parse_reply(data: dict[str, Any], snapshot: Snapshot) -> Reply:
     kind = data.get("kind")
     if kind not in REPLY_KINDS:
         kind = "ask" if message.rstrip().endswith("?") else "tell"
-    valid = set(snapshot.refs)
-    choices = data.get("choices") or []
-    refs = (
-        tuple(c for c in choices if isinstance(c, int) and c in valid)
-        if isinstance(choices, list)
-        else ()
-    )
+    found = (snapshot.by_key(c) for c in _strings(data.get("choices")))
+    refs = tuple(e.ref for e in found if e is not None and e.ref is not None)
     return Reply(kind, message, tuple(dict.fromkeys(refs)))
 
 
@@ -117,21 +112,20 @@ def _parse_action(item: Any, snapshot: Snapshot) -> ActionRequest:
         text = str(item.get("text", "")).strip()
         if not text:
             raise DecisionError('"type_text" needs a "text".')
-        ref = item.get("id")
-        if ref is not None:
-            _check_ref(ref, snapshot)
+        field = item.get("target")
+        ref = _check_target(field, snapshot).ref if field is not None else None
         return ActionRequest(do, ref=ref, text=text)
-    ref = item.get("id")
-    element = _check_ref(ref, snapshot)
+    target = item.get("target")
+    element = _check_target(target, snapshot)
     if do == "scroll":
         if element.scroll is None:
-            raise DecisionError(f"[{ref}] cannot be scrolled.")
+            raise DecisionError(f'"{target}" cannot be scrolled.')
         direction = item.get("direction")
-        return ActionRequest(do, ref=ref, direction="up" if direction == "up" else "down")
+        return ActionRequest(do, ref=element.ref, direction="up" if direction == "up" else "down")
     if element.is_region:
-        raise DecisionError(f"[{ref}] is a group, not a control. Use a number of a control in it.")
+        raise DecisionError(f'"{target}" is a group, not a control. Use a control in it.')
     times = _clamp(item.get("times"), 1, MAX_TIMES) if do == "click" else 1
-    return ActionRequest(do, ref=ref, times=times)
+    return ActionRequest(do, ref=element.ref, times=times)
 
 
 def _strings(value: Any) -> list[str]:
@@ -166,10 +160,10 @@ def _is_choice(action: ActionRequest, snapshot: Snapshot) -> bool:
     return action.do == "click" and element is not None and element.is_toggleable
 
 
-def _check_ref(ref: Any, snapshot: Snapshot) -> Element:
-    element = snapshot.by_ref(ref) if isinstance(ref, int) else None
-    if element is None:
-        raise DecisionError(f"[{ref}] is not a number on the CURRENT SCREEN.")
+def _check_target(target: Any, snapshot: Snapshot) -> Element:
+    element = snapshot.by_key(target) if isinstance(target, str) else None
+    if element is None or element.ref is None:
+        raise DecisionError(f'"{target}" is not a control on the CURRENT SCREEN.')
     return element
 
 

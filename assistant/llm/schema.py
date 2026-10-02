@@ -1,7 +1,9 @@
 """JSON schemas for the model's answers, built for the current screen.
 
-Ollama turns the schema into a grammar, so the model can only produce valid JSON, and element
-numbers are limited to the ones that exist on the screen it was shown.
+Ollama turns the schema into a grammar, so the model can only produce valid JSON, and targets
+are limited to the controls on the screen it was shown. Targets are the controls' names, not
+their numbers: the model then picks what it means by name, and does not copy stale numbers from
+earlier answers (seen in E2E tests with qwen2.5).
 """
 
 from __future__ import annotations
@@ -34,14 +36,14 @@ def reply_schema(snapshot: Snapshot) -> dict[str, Any]:
         next={"const": "reply"},
         kind={"type": "string", "enum": list(REPLY_KINDS)},
         message=_string(MESSAGE_MAX),
-        choices=_ref_list(_control_refs(snapshot), max_items=MAX_ACTIONS),
+        choices=_target_list(_control_keys(snapshot), max_items=MAX_ACTIONS),
     )
 
 
 def _act_schema(snapshot: Snapshot) -> dict[str, Any]:
-    controls = _control_refs(snapshot)
+    controls = _control_keys(snapshot)
     edits = [
-        e.ref
+        e.key
         for e in snapshot.elements
         if e.ref is not None and Pattern.VALUE in e.patterns and e.kind in {"Edit", "ComboBox"}
     ]
@@ -50,22 +52,24 @@ def _act_schema(snapshot: Snapshot) -> dict[str, Any]:
         variants.append(
             _object(
                 do={"const": "click"},
-                id=_ref(controls),
+                target=_target(controls),
                 times={"type": "integer", "minimum": 1, "maximum": MAX_TIMES},
             )
         )
         variants.append(
-            _object(do={"type": "string", "enum": ["select", "unselect"]}, id=_ref(controls))
+            _object(do={"type": "string", "enum": ["select", "unselect"]}, target=_target(controls))
         )
     if edits:
-        variants.append(_object(do={"const": "type_text"}, id=_ref(edits), text=_string(TEXT_MAX)))
+        variants.append(
+            _object(do={"const": "type_text"}, target=_target(edits), text=_string(TEXT_MAX))
+        )
     else:
         variants.append(_object(do={"const": "type_text"}, text=_string(TEXT_MAX)))
     if snapshot.scroll_refs:
         variants.append(
             _object(
                 do={"const": "scroll"},
-                id=_ref(snapshot.scroll_refs),
+                target=_target([e.key for e in snapshot.elements if e.scroll and e.ref]),
                 direction={"type": "string", "enum": ["up", "down"]},
             )
         )
@@ -88,8 +92,8 @@ def _act_schema(snapshot: Snapshot) -> dict[str, Any]:
     )
 
 
-def _control_refs(snapshot: Snapshot) -> list[int]:
-    return [e.ref for e in snapshot.elements if e.ref is not None and not e.is_region]
+def _control_keys(snapshot: Snapshot) -> list[str]:
+    return [e.key for e in snapshot.elements if e.ref is not None and not e.is_region]
 
 
 def _object(**properties: dict[str, Any]) -> dict[str, Any]:
@@ -105,11 +109,11 @@ def _need_to_ask() -> dict[str, Any]:
     return {"type": "array", "items": _string(30), "maxItems": ASK_MAX}
 
 
-def _ref(refs: list[int]) -> dict[str, Any]:
-    return {"type": "integer", "enum": refs}
+def _target(keys: list[str]) -> dict[str, Any]:
+    return {"type": "string", "enum": keys}
 
 
-def _ref_list(refs: list[int], max_items: int) -> dict[str, Any]:
-    if not refs:
+def _target_list(keys: list[str], max_items: int) -> dict[str, Any]:
+    if not keys:
         return {"type": "array", "maxItems": 0}
-    return {"type": "array", "items": _ref(refs), "maxItems": max_items}
+    return {"type": "array", "items": _target(keys), "maxItems": max_items}
