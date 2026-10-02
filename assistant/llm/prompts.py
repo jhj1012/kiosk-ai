@@ -67,10 +67,11 @@ quantities) and the total amount shown on the screen, and ask for a clear yes wi
 out", "menu, coffee tab", "options for latte", "payment").
 "todo": what the customer asked for that is not done yet, in the customer's own Korean \
 words (e.g. "아이스 라떼 2잔, 쿠키 1개: latte tab first").
-"missing": the REQUIRED choices on the CURRENT SCREEN that the customer has not told you yet, \
-even if one is checked by default (e.g. ["온도"], ["매장/포장"], ["결제수단"]). Never extras. \
-[] if nothing is missing. If "missing" is not empty, you may only select choices the customer \
-already gave, and then you must ask about the missing ones.
+"missing": the REQUIRED choices shown on the CURRENT SCREEN that the customer has not told \
+you yet, even if one is checked by default (e.g. ["온도"], ["매장/포장"], ["결제수단"]). Not \
+choices of later screens, not extras, and not what the customer already said (라지 = Large, \
+아이스 = ICE). [] if nothing is missing. If "missing" is not empty, you may only select choices \
+the customer already gave, and then you must ask about the missing ones.
 "next": "act" to use the screen now, or "reply" to talk to the customer (this ends your turn).
 For "act", "actions" is a list, done in order:
   {"do": "click", "id": 7, "times": 1}   press a button ("times" > 1 presses it again)

@@ -64,7 +64,7 @@ def parse_decision(text: str, snapshot: Snapshot) -> Decision:
         if not isinstance(actions, list) or not actions:
             raise DecisionError('"act" needs at least one action.')
         parsed = tuple(_parse_action(a, snapshot) for a in actions)
-        missing = [str(m) for m in data.get("missing") or [] if str(m).strip()]
+        missing = [m for m in _strings(data.get("missing")) if _on_screen(m, snapshot)]
         if missing and not all(_is_choice(a, snapshot) for a in parsed):
             # Pressing on (add to cart, next, ...) while a required choice is open would
             # decide it for the customer with the screen's default.
@@ -120,6 +120,19 @@ def _parse_action(item: Any, snapshot: Snapshot) -> ActionRequest:
         raise DecisionError(f"[{ref}] is a group, not a control. Use a number of a control in it.")
     times = _clamp(item.get("times"), 1, MAX_TIMES) if do == "click" else 1
     return ActionRequest(do, ref=ref, times=times)
+
+
+def _strings(value: Any) -> list[str]:
+    return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
+
+
+def _on_screen(choice: str, snapshot: Snapshot) -> bool:
+    """True if a word of `choice` (e.g. "사이즈" of "사이즈/크기") appears on the screen.
+
+    Only those entries are enforced: the model sometimes lists choices of a later screen.
+    """
+    words = [w for w in re.split(r"[\s/,()]+", choice) if len(w) >= 2]
+    return any(w in e.name for w in words for e in snapshot.elements)
 
 
 def _is_choice(action: ActionRequest, snapshot: Snapshot) -> bool:
