@@ -1,1 +1,1 @@
-"""Speech-to-text (Korean), planned: Gemini API audio input."""
+"""Speech-to-text (Korean) with the Gemini API audio input."""

@@ -131,3 +131,22 @@ def test_rate_limit_waits_as_long_as_google_asks(monkeypatch: pytest.MonkeyPatch
     llm, _ = model_with(daily)
     with pytest.raises(LlmError):
         llm.chat_json([{"role": "user", "content": "x"}], {})
+
+
+def test_audio_json_sends_the_recording_inline() -> None:
+    llm, models = model_with(response('{"speech": true, "text": "네"}'))
+    result = llm.audio_json("transcribe", b"RIFF", "audio/wav", {"type": "object"})
+    assert result.text == '{"speech": true, "text": "네"}'
+    call = models.calls[0]
+    parts = call["contents"][0]["parts"]
+    assert parts[0] == {"inline_data": {"mime_type": "audio/wav", "data": b"RIFF"}}
+    assert parts[1] == {"text": "transcribe"}
+    assert call["config"]["response_json_schema"] == {"type": "object"}
+    assert call["config"]["system_instruction"] is None
+
+
+def test_audio_json_retries_like_chat(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(client_module.time, "sleep", lambda s: None)
+    llm, models = model_with(ApiError(503), response("{}"))
+    assert llm.audio_json("p", b"", "audio/wav", {}).text == "{}"
+    assert len(models.calls) == 2
