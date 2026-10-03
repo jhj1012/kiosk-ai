@@ -99,3 +99,36 @@ def test_env_file_sets_missing_variables_only(
     assert os.environ["KIOSK_TEST_SET"] == "from-environment"  # the environment wins
     monkeypatch.delenv("KIOSK_TEST_KEY")
     assert load_env_file(tmp_path / "missing.env") == []
+
+
+def test_stt_and_audio_defaults_and_overrides(config_dir: Path) -> None:
+    config = load_config(config_dir)
+    assert config.stt.thinking_level == "minimal"
+    assert config.stt.model != config.llm.model  # its own rate-limit quota
+    assert config.audio.sample_rate == 16000
+    assert config.audio.device is None
+    write(config_dir / "models.local.yaml", "stt:\n  model: other-stt\n  vocabulary_hints: false\n")
+    write(config_dir / "settings.local.yaml", "audio:\n  device: USB\n  silence_end_ms: 1000\n")
+    config = load_config(config_dir)
+    assert (config.stt.model, config.stt.vocabulary_hints) == ("other-stt", False)
+    assert (config.audio.device, config.audio.silence_end_ms) == ("USB", 1000)
+    llm = config.stt.llm_config("MY_KEY")
+    assert (llm.model, llm.api_key_env, llm.thinking_level) == ("other-stt", "MY_KEY", "minimal")
+
+
+def test_invalid_audio_and_stt_settings(config_dir: Path) -> None:
+    write(config_dir / "settings.local.yaml", "audio:\n  frame_ms: 25\n")
+    with pytest.raises(ConfigError, match="frame_ms"):
+        load_config(config_dir)
+    write(config_dir / "settings.local.yaml", "audio:\n  threshold_factor: 0.5\n")
+    with pytest.raises(ConfigError, match="threshold_factor"):
+        load_config(config_dir)
+    (config_dir / "settings.local.yaml").unlink()
+    write(config_dir / "models.local.yaml", "stt:\n  thinking_level: none\n")
+    with pytest.raises(ConfigError, match="stt.thinking_level"):
+        load_config(config_dir)
+
+
+def test_repository_stt_model_differs_from_the_agent_model() -> None:
+    config = load_config(CONFIG_DIR)
+    assert config.stt.model != config.llm.model

@@ -1,1 +1,1 @@
-"""Microphone capture (push-to-talk, later VAD)."""
+"""Microphone capture and voice activity detection (energy-based, pure Python)."""

@@ -8,11 +8,11 @@ what is on the screen, through the Windows UI Automation (accessibility) tree. T
 the cloud through the **Gemini API**, so it works on ordinary PCs without a strong GPU.
 
 ```
- mic ──► STT (planned) ──► LLM (Gemini API) ──► screen actions (UI Automation)
-                                  │
-                                  ├──► TTS (pyttsx3, planned) ──► speaker
-                                  └──► visual overlay (planned): avatar, subtitles,
-                                       kiosk button images, blurred kiosk behind
+ mic ──► VAD ──► STT (Gemini API) ──► LLM (Gemini API) ──► screen actions (UI Automation)
+                                             │
+                                             ├──► TTS (pyttsx3, planned) ──► speaker
+                                             └──► visual overlay (planned): avatar, subtitles,
+                                                  kiosk button images, blurred kiosk behind
 ```
 
 ## Roadmap
@@ -21,8 +21,8 @@ the cloud through the **Gemini API**, so it works on ordinary PCs without a stro
 |---|---|---|
 | 1 | Test kiosk (`kiosk_app`) + UIA dump script | ✅ Done |
 | 2 | Text-only agent: typed Korean in, kiosk operated via UIA, proactive questions | ✅ Done |
-| 3 | Speech recognition (Gemini API audio input) + voice activity detection | ⏳ Next |
-| 4 | TTS (pyttsx3, Korean voice) | Planned |
+| 3 | Speech recognition (Gemini API audio input) + voice activity detection | ✅ Done |
+| 4 | TTS (pyttsx3, Korean voice) | ⏳ Next |
 | 5 | Visual overlay: AI avatar, subtitles, cropped kiosk UI images, blurred kiosk background | Planned |
 
 See [docs/architecture.md](docs/architecture.md#planned-visual-overlay) for the overlay design.
@@ -48,15 +48,21 @@ uv sync                                         # install Python deps (creates .
 Set-Content .env "GEMINI_API_KEY=your-key-here" # once; .env is git-ignored
 uv run python -m kiosk_app                      # run the test kiosk
 uv run python -m assistant                      # run the assistant (type Korean; --debug shows its steps)
+uv run python -m assistant --voice              # speak Korean into the microphone instead
 ```
+
+Voice mode detects the start and end of speech by itself (no key to press) and sends each
+utterance to Gemini for transcription. Check your microphone first with
+`uv run python scripts/mic_check.py` (see [docs/setup.md](docs/setup.md#6-microphone-voice-mode)).
 
 ### When the Gemini model is busy
 
 Gemini models are shared, and at busy times Google answers slowly or refuses requests with
 errors like `503 UNAVAILABLE ("This model is currently experiencing high demand")`,
 `429 RESOURCE_EXHAUSTED` (your quota is used up) or `504 DEADLINE_EXCEEDED`. The free tier
-allows only about 15 requests per minute per model, and one assistant turn can use several,
-so talking quickly can hit it. The assistant retries automatically (for `429` it waits as long
+allows only about 15 requests per minute and 500 per day per model, and one assistant turn
+can use several, so talking quickly can hit it. Speech recognition uses a different model
+(`stt.model`) with its own limits. The assistant retries automatically (for `429` it waits as long
 as Google asks, up to a minute); if it still fails, it says
 "죄송해요, 지금 잠시 문제가 생겼어요…" and you can simply say it again. If it keeps happening:
 

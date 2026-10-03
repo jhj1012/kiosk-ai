@@ -40,7 +40,9 @@ The assistant's AI runs in the cloud through the Gemini API; nothing is download
 
 Each teammate uses their own key. Check the free-tier limits and pricing of the model you use
 in AI Studio. What the assistant sends to Google: the conversation and the text of the kiosk
-screen (no screenshots, no audio yet).
+screen (no screenshots), and in voice mode the recording of each utterance. The free tier also
+has a **daily** limit per model (500 requests in our tests); voice mode uses a second model for
+speech recognition, so it has its own limits.
 
 ### Choosing another model
 
@@ -63,7 +65,44 @@ Start the kiosk first, then the assistant in a second terminal, on the same virt
 uv run python -m kiosk_app
 uv run python -m assistant            # type Korean at the "나>" prompt
 uv run python -m assistant --debug    # also print each screen, model answer and action
+uv run python -m assistant --voice    # speak instead of typing (see 6.)
 ```
 
-Every session writes a log to `logs/`. Commands: `/reset` starts a new conversation,
-`/quit` exits.
+Every session writes a log to `logs/`. Typed commands: `/reset` starts a new conversation,
+`/quit` exits. In voice mode, Ctrl+C exits.
+
+## 6. Microphone (voice mode)
+
+1. **Allow microphone access**: Windows Settings → Privacy & security → Microphone → turn on
+   **Microphone access** and **Let desktop apps access your microphone**. If this is off, the
+   microphone delivers only silence and the assistant says so ("마이크 소리가 전혀 들어오지 않아요").
+2. Check the microphone and speech recognition:
+
+   ```powershell
+   uv run python scripts/mic_check.py --list       # input devices; * = Windows default
+   uv run python scripts/mic_check.py --levels 10  # live levels; "|" marks the speech threshold
+   uv run python scripts/mic_check.py              # say something: prints the text and latency
+   ```
+
+3. To use another device or tune the voice detection on your PC only, create
+   `configs/settings.local.yaml` (git-ignored):
+
+   ```yaml
+   audio:
+     device: USB          # index or part of the name from --list
+     min_threshold: 200   # quieter microphone: lower; noisy room: raise
+     silence_end_ms: 1000 # people who pause while speaking
+   ```
+
+Run `uv run python -m assistant --voice`. After "(말씀하시면 듣고 있어요)", just speak; the
+assistant detects the start and end of speech by itself, shows what it understood as
+`나(음성)> ...` and answers. Stay quiet for the first second (it measures the background
+noise). Developer options:
+
+- `--push-to-talk`: press Enter before each utterance (useful in a noisy room).
+- `--save-audio`: save each utterance to `recordings/` (git-ignored; never commit recordings).
+- `--debug`: also shows ignored sounds ("말소리가 아니에요").
+
+The speech recognition model is `stt.model` in `configs/models.yaml` (change it per PC in
+`configs/models.local.yaml`). Keep it different from the agent's `llm.model`, so each has its
+own rate limits.

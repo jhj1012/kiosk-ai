@@ -8,9 +8,22 @@ screen:
   settle_timeout_s: 5.0     # after an action, wait at most this long for the screen to settle
   poll_interval_s: 0.1      # how often the screen is re-read while waiting
 
+# Microphone and voice activity detection (--voice). Levels are the RMS of 16-bit samples;
+# `uv run python scripts/mic_check.py --levels` shows them live.
 audio:
   sample_rate: 16000
-  push_to_talk_key: space
+  device: null              # null = Windows default input; or an index / part of the name
+                            # from `scripts/mic_check.py --list`
+  frame_ms: 30              # 10, 20 or 30
+  calibration_s: 1.0        # background noise is measured at start-up (stay quiet)
+  threshold_factor: 3.0     # speech = this many times louder than the background noise
+  min_threshold: 300        # ...and at least this loud
+  start_ms: 90              # this much loud audio within 300 ms starts an utterance
+  pre_roll_ms: 300          # audio kept from before the start, so the first syllable is not cut
+  silence_end_ms: 800       # quiet this long ends the utterance
+  min_utterance_ms: 120     # shorter sounds (clicks) are dropped; a short "네" is ~150 ms
+  max_utterance_s: 15       # longer utterances are cut off here
+  echo_tail_ms: 300         # keep ignoring the mic this long after the assistant stops speaking
 
 agent:
   max_steps_per_request: 10   # LLM calls per user message (one call can do several actions)

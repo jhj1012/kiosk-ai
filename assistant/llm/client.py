@@ -96,6 +96,18 @@ class GeminiChatModel:
 
     def chat_json(self, messages: list[Message], schema: dict[str, Any]) -> ChatResult:
         system, contents = to_gemini(messages)
+        return self._json_request(system, contents, schema)
+
+    def audio_json(
+        self, prompt: str, audio: bytes, mime_type: str, schema: dict[str, Any]
+    ) -> ChatResult:
+        """Send a recording with instructions; the answer is JSON that follows `schema`."""
+        parts = [{"inline_data": {"mime_type": mime_type, "data": audio}}, {"text": prompt}]
+        return self._json_request("", [{"role": "user", "parts": parts}], schema)
+
+    def _json_request(
+        self, system: str, contents: list[dict[str, Any]], schema: dict[str, Any]
+    ) -> ChatResult:
         config = {
             "system_instruction": system or None,
             "temperature": self.config.temperature,
@@ -118,7 +130,8 @@ class GeminiChatModel:
             finish_reason=str(getattr(finish, "name", finish) or ""),
         )
         log.info(
-            "llm %.1fs, prompt %d tokens, output %d tokens, thinking %d tokens (%s)",
+            "%s %.1fs, prompt %d tokens, output %d tokens, thinking %d tokens (%s)",
+            self.config.model,
             result.seconds,
             result.prompt_tokens,
             result.output_tokens,
